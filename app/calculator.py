@@ -6,8 +6,6 @@ This module provides basic arithmetic operations through a factory pattern,
 allowing dynamic operation selection and execution.
 """
 
-
-
 class Operation(ABC):
     """Abstract base class for all operations."""
     
@@ -108,10 +106,14 @@ class Absolute(UnaryOperation):
     def __init__(self):
         super().__init__(lambda x: abs(x))
 
+class AbsoluteDifference(BinaryOperation):
+    def __init__(self):
+        super().__init__(lambda x, y: abs(x - y))
 
 class OperationFactory:
     """Factory for creating operation objects."""
     
+    """ Mapping of operation names to their corresponding classes """
     _operations = {
         'add': Add,
         'subtract': Subtract,
@@ -123,6 +125,7 @@ class OperationFactory:
         'integer_divide': IntegerDivide,
         'percentage': Percentage,
         'absolute': Absolute,
+        'absolute_difference': AbsoluteDifference
     }
     
     @classmethod
@@ -130,6 +133,7 @@ class OperationFactory:
         """Create and return an operation instance."""
         if operation_name not in cls._operations:
             raise ValueError(f"Unknown operation: {operation_name}")
+        raise ValueError(f"Unknown operation: {operation_name}. Available operations: {', '.join(cls.get_available_operations())}")
         return cls._operations[operation_name]()
     
     @classmethod
