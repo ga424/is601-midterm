@@ -132,8 +132,7 @@ class OperationFactory:
     def create_operation(cls, operation_name: str) -> Operation:
         """Create and return an operation instance."""
         if operation_name not in cls._operations:
-            raise ValueError(f"Unknown operation: {operation_name}")
-        raise ValueError(f"Unknown operation: {operation_name}. Available operations: {', '.join(cls.get_available_operations())}")
+            raise ValueError(f"Unknown operation: {operation_name}. Available operations: {', '.join(cls.get_available_operations())}")
         return cls._operations[operation_name]()
     
     @classmethod
