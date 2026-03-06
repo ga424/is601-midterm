@@ -32,6 +32,35 @@ This project enforces **100% test coverage** via `pytest-cov`.
 
 Any pull request or push to `main` fails if coverage drops below `100%`.
 
+## Feature Branch Workflow
+
+Use a feature branch for every change, then open a pull request (merge request) into `main`.
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/<short-description>
+# make changes
+git add .
+git commit -m "feat: describe change"
+git push -u origin feature/<short-description>
+```
+
+Then open a Pull Request from `feature/<short-description>` to `main`.
+
+### Enforced in CI
+
+- PR source branch must match `feature/<short-description>`
+- Tests must pass with `100%` coverage
+
+### Required GitHub Repository Setting
+
+In GitHub, enable branch protection for `main`:
+
+- Require a pull request before merging
+- Require status checks to pass before merging (`Tests`, `Branch Policy`)
+- Optionally restrict direct pushes to `main`
+
 ## Available Operations
 
 - add

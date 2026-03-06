@@ -1,0 +1,22 @@
+name: Branch Policy
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate-source-branch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate source branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "PR source branch: $BRANCH"
+
+          if [[ ! "$BRANCH" =~ ^feature\/[a-z0-9._-]+$ ]]; then
+            echo "Branch policy violation."
+            echo "Use feature branches with format: feature/<short-description>."
+            echo "Example: feature/add-root-operation"
+            exit 1
+          fi
