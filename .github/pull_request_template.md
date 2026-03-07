@@ -8,7 +8,7 @@ Closes #<issue-number>
 
 ## Branch
 
-- Source branch: `feature/<short-description>`
+- Source branch: `feature/<short-description>` or `integration/<short-description>`
 - Target branch: `main`
 
 ## Testing

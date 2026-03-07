@@ -64,11 +64,11 @@ git commit -m "feat: describe change"
 git push -u origin feature/<short-description>
 ```
 
-Then open a Pull Request from `feature/<short-description>` to `main`.
+Then open a Pull Request from `feature/<short-description>` (or `integration/<short-description>` when combining approved feature work) to `main`.
 
 ### Enforced in CI
 
-- PR source branch must match `feature/<short-description>`
+- PR source branch must match `feature/<short-description>` or `integration/<short-description>`
 - Tests must pass with `100%` coverage
 
 ### Required GitHub Repository Setting

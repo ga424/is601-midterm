@@ -14,9 +14,9 @@ jobs:
           BRANCH="${{ github.head_ref }}"
           echo "PR source branch: $BRANCH"
 
-          if [[ ! "$BRANCH" =~ ^feature\/[a-z0-9._-]+$ ]]; then
+          if [[ ! "$BRANCH" =~ ^(feature|integration)\/[a-z0-9._-]+$ ]]; then
             echo "Branch policy violation."
-            echo "Use feature branches with format: feature/<short-description>."
-            echo "Example: feature/add-root-operation"
+            echo "Use branches with format: feature/<short-description> or integration/<short-description>."
+            echo "Examples: feature/add-root-operation, integration/midterm-final"
             exit 1
           fi

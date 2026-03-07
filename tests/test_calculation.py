@@ -540,6 +540,20 @@ def test_colorize_output_with_mocked_colorama_palette_paths(monkeypatch):
 	assert colorize_output("ok", color="unknown") == "Cok!"
 
 
+def test_colorize_output_returns_plain_text_when_colorama_import_fails(monkeypatch):
+	import builtins
+
+	original_import = builtins.__import__
+
+	def _import_with_colorama_error(name, *args, **kwargs):
+		if name == "colorama":
+			raise ImportError("simulated missing dependency")
+		return original_import(name, *args, **kwargs)
+
+	monkeypatch.setattr(builtins, "__import__", _import_with_colorama_error)
+	assert colorize_output("plain", level="success", use_color=True) == "plain"
+
+
 def test_validator_helpers_cover_error_branches():
 	with pytest.raises(Exception):
 		parse_number(True)
