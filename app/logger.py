@@ -14,11 +14,21 @@ class Logger:
 		self._logger.propagate = False
 		if not self._logger.handlers:
 			handler = logging.FileHandler(log_file, encoding="utf-8")
-			handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+			handler.setFormatter(
+				logging.Formatter(
+					"time=%(asctime)s level=%(levelname)s logger=%(name)s class=%(class_name)s message=%(message)s",
+					datefmt="%Y-%m-%dT%H:%M:%S%z",
+				)
+			)
 			self._logger.addHandler(handler)
 
-	def info(self, message: str) -> None:
-		self._logger.info(message)
+	def info(self, message: str, class_name: str = "Logger") -> None:
+		self._logger.info(message, extra={"class_name": class_name})
+
+	def event(self, event: str, class_name: str, **details) -> None:
+		payload = " ".join(f"{key}={value}" for key, value in details.items())
+		message = f"event={event}" if not payload else f"event={event} {payload}"
+		self.info(message, class_name=class_name)
 
 
 class LoggingObserver:
@@ -27,7 +37,8 @@ class LoggingObserver:
 
 	def update(self, calculation: Calculation) -> None:
 		self.logger.info(
-			f"operation={calculation.operation} operands=({calculation.operand_1}, {calculation.operand_2}) result={calculation.result}"
+			f"operation={calculation.operation} operands=({calculation.operand_1}, {calculation.operand_2}) result={calculation.result}",
+			class_name=self.__class__.__name__,
 		)
 
 

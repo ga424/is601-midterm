@@ -205,8 +205,48 @@ def test_logger_and_logging_observer_write_to_file(tmp_path):
 	observer = LoggingObserver(logger)
 	observer.update(Calculation("add", 1, 2, 3))
 	content = log_file.read_text(encoding="utf-8")
-	assert "INFO:hello" in content
+	assert "time=" in content
+	assert "level=INFO" in content
+	assert "class=Logger" in content
+	assert "message=hello" in content
 	assert "operation=add" in content
+	assert "class=LoggingObserver" in content
+
+
+def test_calculator_event_logging_writes_command_and_history_events(tmp_path):
+	log_file = tmp_path / "events.log"
+	history_file = tmp_path / "history.csv"
+	calculator = Calculator(history_file=history_file, log_file=log_file)
+
+	calculator.run_command("help")
+	calculator.run_command("add 2 3")
+	calculator.run_command("save")
+	calculator.run_command("load")
+	calculator.run_command("clear")
+	calculator.run_command("undo")
+	calculator.run_command("redo")
+	calculator.run_command("exit")
+
+	content = log_file.read_text(encoding="utf-8")
+	assert "event=calculator_initialized" in content
+	assert "event=command_received command=help" in content
+	assert "event=calculation_requested operation=add" in content
+	assert "event=calculation_completed operation=add result=5.0" in content
+	assert "class=Calculator" in content
+	assert "event=history_saved" in content
+	assert "event=history_loaded" in content
+	assert "event=history_cleared" in content
+	assert "event=command_response action=exit" in content
+
+
+def test_calculator_event_logging_writes_error_events(tmp_path):
+	log_file = tmp_path / "events.log"
+	calculator = Calculator(history_file=tmp_path / "missing.csv", log_file=log_file)
+	calculator.run_command("load")
+
+	content = log_file.read_text(encoding="utf-8")
+	assert "event=history_load_missing_file" in content
+	assert "event=command_response action=load" in content
 
 
 def test_autosave_observer_saves_when_enabled(tmp_path):
@@ -414,7 +454,7 @@ def test_run_command_save_returns_error_on_persistence_failure(tmp_path, monkeyp
 
 
 def test_run_repl_exits_when_exit_command_received(monkeypatch, capsys):
-	calculator = Calculator(history_file=Path("history.csv"))
+	calculator = Calculator(history_file=Path("history.csv"), log_file=Path("calculator.log"))
 	inputs = iter(["help", "exit"])
 	monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
 
@@ -423,6 +463,19 @@ def test_run_repl_exits_when_exit_command_received(monkeypatch, capsys):
 	output = capsys.readouterr().out
 	assert "Available commands" in output
 	assert "Exiting calculator." in output
+
+
+def test_run_repl_logs_start_and_stop_events(monkeypatch, tmp_path):
+	log_file = tmp_path / "events.log"
+	calculator = Calculator(history_file=tmp_path / "history.csv", log_file=log_file)
+	inputs = iter(["exit"])
+	monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
+
+	run_repl(calculator)
+
+	content = log_file.read_text(encoding="utf-8")
+	assert "event=repl_started" in content
+	assert "event=repl_stopped reason=user_exit" in content
 
 
 def test_run_repl_handles_keyboard_interrupt(monkeypatch, capsys):
