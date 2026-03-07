@@ -218,7 +218,7 @@ class Calculator:
             operand_2 = float(args[1])
             calculation = self.calculate(command, operand_1, operand_2)
             return self._format_calculation(calculation), False
-        except ValueError as error:
+        except (ValueError, PersistenceError) as error:
             return f"Error: {error}", False
 
 
