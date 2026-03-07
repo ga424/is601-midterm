@@ -1,10 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from app.calculation import Calculation
-from app.calculator_memento import CalculatorCaretaker
-from app.history import HistoryManager
-
 """ Arithmetic Operations supporting Factory Design Pattern for a REPL application.
 This module provides basic arithmetic operations through a factory pattern,
 allowing dynamic operation selection and execution.
@@ -143,43 +139,3 @@ class OperationFactory:
     def get_available_operations(cls) -> list:
         """Return list of available operations."""
         return list(cls._operations.keys())
-
-
-class Calculator:
-    def __init__(self, max_history_size: int = 100):
-        self.history = HistoryManager(max_size=max_history_size)
-        self._caretaker = CalculatorCaretaker()
-
-    def calculate(self, operation_name: str, operand_1: float, operand_2: float) -> Calculation:
-        operation = OperationFactory.create_operation(operation_name)
-        result = operation.execute(operand_1, operand_2)
-        calculation = Calculation(
-            operation=operation_name,
-            operand_1=operand_1,
-            operand_2=operand_2,
-            result=result,
-        )
-
-        self._caretaker.save_for_undo(self.history.get_all())
-        self.history.add(calculation)
-        self._caretaker.clear_redo()
-        return calculation
-
-    def undo(self) -> bool:
-        previous_state = self._caretaker.undo(self.history.get_all())
-        if previous_state is None:
-            return False
-        self.history.set_all(previous_state)
-        return True
-
-    def redo(self) -> bool:
-        next_state = self._caretaker.redo(self.history.get_all())
-        if next_state is None:
-            return False
-        self.history.set_all(next_state)
-        return True
-
-    def clear_history(self) -> None:
-        self._caretaker.save_for_undo(self.history.get_all())
-        self.history.clear()
-        self._caretaker.clear_redo()
