@@ -26,26 +26,10 @@ from app.operations import (
 	Subtract,
 	UnaryOperation,
 )
+from app.repl_commands import OPERATION_COMMANDS, OperationCommand, build_command_registry
 
 
 class Calculator:
-	_OPERATION_COMMANDS = {
-		"add",
-		"subtract",
-		"multiply",
-		"divide",
-		"power",
-		"root",
-		"modulus",
-		"int_divide",
-		"percent",
-		"abs_diff",
-		"integer_divide",
-		"percentage",
-		"absolute_difference",
-		"absolute",
-	}
-
 	def __init__(
 		self,
 		history_file: str | Path = "history.csv",
@@ -64,18 +48,8 @@ class Calculator:
 		self.default_encoding = default_encoding
 		self._caretaker = CalculatorCaretaker()
 		self._observers = []
-		self._command_handlers = {
-			"help": self._handle_help,
-			"?": self._handle_help,
-			"exit": self._handle_exit,
-			"quit": self._handle_exit,
-			"history": self._handle_history,
-			"clear": self._handle_clear,
-			"undo": self._handle_undo,
-			"redo": self._handle_redo,
-			"save": self._handle_save,
-			"load": self._handle_load,
-		}
+		self._command_handlers = build_command_registry()
+		self._operation_command = OperationCommand()
 		self._event_logger = Logger(log_file=self.log_file)
 		self.register_observer(LoggingObserver(Logger(log_file=self.log_file)))
 		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=auto_save))
@@ -217,82 +191,6 @@ class Calculator:
 			"  Other: help (or ?), exit"
 		)
 
-	def _handle_help(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		self._log_event("command_response", action=action, should_exit=False)
-		return self._help_message(), False
-
-	def _handle_exit(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		self._log_event("command_response", action=action, should_exit=True)
-		return "Exiting calculator.", True
-
-	def _handle_history(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		history = self.get_history()
-		if not history:
-			self._log_event("command_response", action=action, message="History is empty.", should_exit=False)
-			return "History is empty.", False
-		self._log_event("command_response", action=action, entries=len(history), should_exit=False)
-		return "\n".join(self._format_calculation(item) for item in history), False
-
-	def _handle_clear(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		self.clear_history()
-		self._log_event("command_response", action=action, should_exit=False)
-		return "History cleared.", False
-
-	def _handle_undo(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		before = len(self.history.get_all())
-		self.undo()
-		after = len(self.history.get_all())
-		self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
-		return ("Undo successful.", False) if before != after else ("Nothing to undo.", False)
-
-	def _handle_redo(self, _parts: list[str], action: str) -> tuple[str, bool]:
-		before = len(self.history.get_all())
-		self.redo()
-		after = len(self.history.get_all())
-		self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
-		return ("Redo successful.", False) if before != after else ("Nothing to redo.", False)
-
-	def _handle_save(self, parts: list[str], action: str) -> tuple[str, bool]:
-		if len(parts) > 2:
-			self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
-			return "Error: save accepts zero or one file path argument.", False
-
-		path = parts[1] if len(parts) == 2 else None
-		try:
-			self.save_history(path)
-			self._log_event("command_response", action=action, should_exit=False)
-			return "History saved.", False
-		except PersistenceError as error:
-			self._log_event("command_response", action=action, error=error, should_exit=False)
-			return f"Error: {error}", False
-
-	def _handle_load(self, parts: list[str], action: str) -> tuple[str, bool]:
-		if len(parts) > 2:
-			self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
-			return "Error: load accepts zero or one file path argument.", False
-
-		path = parts[1] if len(parts) == 2 else None
-		try:
-			self.load_history(path)
-			self._log_event("command_response", action=action, should_exit=False)
-			return "History loaded.", False
-		except PersistenceError as error:
-			self._log_event("command_response", action=action, error=error, should_exit=False)
-			return f"Error: {error}", False
-
-	def _handle_operation(self, parts: list[str], action: str) -> tuple[str, bool]:
-		if len(parts) != 3:
-			self._log_event("command_response", action=action, error="invalid_operands", should_exit=False)
-			return "Operations require exactly two numeric operands.", False
-
-		try:
-			calculation = self.calculate(parts[0], parts[1], parts[2])
-			self._log_event("command_response", action=action, should_exit=False)
-			return self._format_calculation(calculation), False
-		except CalculatorError as error:
-			self._log_event("command_response", action=action, error=error, should_exit=False)
-			return f"Error: {error}", False
-
 	def run_command(self, command: str) -> tuple[str, bool]:
 		parts = command.strip().split()
 		self._log_event("command_received", command=command.strip())
@@ -303,13 +201,13 @@ class Calculator:
 		action = parts[0].lower()
 		handler = self._command_handlers.get(action)
 		if handler is not None:
-			return handler(parts, action)
+			return handler.execute(self, parts, action)
 
-		if action not in self._OPERATION_COMMANDS:
+		if action not in OPERATION_COMMANDS:
 			self._log_event("command_response", action=action, error="unknown_command", should_exit=False)
 			return f"Unknown command '{action}'. Type 'help' to view available commands.", False
 
-		return self._handle_operation(parts, action)
+		return self._operation_command.execute(self, parts, action)
 
 
 @dataclass(frozen=True)
