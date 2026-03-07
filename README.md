@@ -32,6 +32,24 @@ This project enforces **100% test coverage** via `pytest-cov`.
 
 Any pull request or push to `main` fails if coverage drops below `100%`.
 
+## Log Format
+
+The calculator writes structured log entries to `calculator.log` with standardized fields:
+
+- `time`: timestamp for the event
+- `level`: log level (for example `INFO`)
+- `logger`: logger name
+- `class`: class that emitted the log event
+- `message`: event payload in key-value form
+
+Example:
+
+```text
+time=2026-03-06T22:14:03+0000 level=INFO logger=calculator.calculator.log class=Calculator message=event=command_received command=add 2 3
+```
+
+This makes logs easier to filter, parse, and audit during debugging and rubric review.
+
 ## Feature Branch Workflow
 
 Use a feature branch for every change, then open a pull request (merge request) into `main`.
