@@ -1,0 +1,35 @@
+import pytest
+
+from app.calculator_config import (
+	ENV_AUTO_SAVE,
+	ENV_DEFAULT_ENCODING,
+	ENV_HISTORY_DIR,
+	ENV_HISTORY_FILE,
+	ENV_LOG_FILE,
+	ENV_LOG_DIR,
+	ENV_MAX_HISTORY_SIZE,
+	ENV_MAX_INPUT_VALUE,
+	ENV_PRECISION,
+	ENV_REPL_PROMPT,
+	ENV_REPL_USE_COLOR,
+	ENV_REPL_WELCOME_MESSAGE,
+)
+
+
+@pytest.fixture
+def clear_config_env(monkeypatch):
+	for key in [
+		ENV_LOG_DIR,
+		ENV_HISTORY_DIR,
+		ENV_LOG_FILE,
+		ENV_HISTORY_FILE,
+		ENV_MAX_HISTORY_SIZE,
+		ENV_AUTO_SAVE,
+		ENV_PRECISION,
+		ENV_MAX_INPUT_VALUE,
+		ENV_DEFAULT_ENCODING,
+		ENV_REPL_PROMPT,
+		ENV_REPL_WELCOME_MESSAGE,
+		ENV_REPL_USE_COLOR,
+	]:
+		monkeypatch.delenv(key, raising=False)
