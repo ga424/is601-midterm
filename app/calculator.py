@@ -1,6 +1,24 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
+try:
+    from colorama import Fore, Style, init as colorama_init
+except ImportError:  # pragma: no cover
+    class _FallbackFore:
+        GREEN = ""
+        RED = ""
+        YELLOW = ""
+        CYAN = ""
+
+    class _FallbackStyle:
+        RESET_ALL = ""
+
+    Fore = _FallbackFore()
+    Style = _FallbackStyle()
+
+    def colorama_init(*args, **kwargs):
+        return None
+
 """ Arithmetic Operations supporting Factory Design Pattern for a REPL application.
 This module provides basic arithmetic operations through a factory pattern,
 allowing dynamic operation selection and execution.
@@ -139,3 +157,18 @@ class OperationFactory:
     def get_available_operations(cls) -> list:
         """Return list of available operations."""
         return list(cls._operations.keys())
+
+
+def colorize_output(message: str, level: str = "info", use_color: bool = True) -> str:
+    if not use_color:
+        return message
+
+    colorama_init(autoreset=True)
+    palette = {
+        "success": Fore.GREEN,
+        "error": Fore.RED,
+        "warning": Fore.YELLOW,
+        "info": Fore.CYAN,
+    }
+    color = palette.get(level, Fore.CYAN)
+    return f"{color}{message}{Style.RESET_ALL}"
