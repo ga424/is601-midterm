@@ -534,6 +534,29 @@ def test_run_repl_handles_eof(monkeypatch, capsys):
 	assert "Exiting calculator." in capsys.readouterr().out
 
 
+def test_run_repl_emits_success_and_info_messages(monkeypatch, capsys, tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv", log_file=tmp_path / "events.log")
+	inputs = iter(["clear", "history", "exit"])
+	monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
+
+	run_repl(calculator)
+
+	output = capsys.readouterr().out
+	assert "History cleared." in output
+	assert "History is empty." in output
+
+
+def test_run_repl_emits_error_message_for_unknown_command(monkeypatch, capsys, tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv", log_file=tmp_path / "events.log")
+	inputs = iter(["foobar", "exit"])
+	monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
+
+	run_repl(calculator)
+
+	output = capsys.readouterr().out
+	assert "Unknown command 'foobar'" in output
+
+
 def test_run_repl_handles_unexpected_exception(monkeypatch, capsys):
 	inputs = iter(["help", "exit"])
 
