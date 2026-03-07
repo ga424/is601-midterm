@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 ENV_LOG_DIR = "CALCULATOR_LOG_DIR"
 ENV_HISTORY_DIR = "CALCULATOR_HISTORY_DIR"
+ENV_LOG_FILE = "CALCULATOR_LOG_FILE"
+ENV_HISTORY_FILE = "CALCULATOR_HISTORY_FILE"
 ENV_MAX_HISTORY_SIZE = "CALCULATOR_MAX_HISTORY_SIZE"
 ENV_AUTO_SAVE = "CALCULATOR_AUTO_SAVE"
 ENV_PRECISION = "CALCULATOR_PRECISION"
@@ -41,6 +43,8 @@ def parse_float(raw_value: str, key: str) -> float:
 class CalculatorConfig:
 	log_dir: Path
 	history_dir: Path
+	log_file_name: str
+	history_file_name: str
 	max_history_size: int
 	auto_save: bool
 	precision: int
@@ -49,11 +53,11 @@ class CalculatorConfig:
 
 	@property
 	def log_file(self) -> Path:
-		return self.log_dir / "calculator.log"
+		return self.log_dir / self.log_file_name
 
 	@property
 	def history_file(self) -> Path:
-		return self.history_dir / "history.csv"
+		return self.history_dir / self.history_file_name
 
 	@classmethod
 	def load(cls, env_file: str | None = None) -> "CalculatorConfig":
@@ -64,6 +68,8 @@ class CalculatorConfig:
 
 		log_dir = Path(os.getenv(ENV_LOG_DIR, "logs"))
 		history_dir = Path(os.getenv(ENV_HISTORY_DIR, "history"))
+		log_file_name = os.getenv(ENV_LOG_FILE, "calculator.log").strip()
+		history_file_name = os.getenv(ENV_HISTORY_FILE, "history.csv").strip()
 
 		max_history_size = parse_int(os.getenv(ENV_MAX_HISTORY_SIZE, "100"), ENV_MAX_HISTORY_SIZE)
 		auto_save = parse_bool(os.getenv(ENV_AUTO_SAVE, "true"), ENV_AUTO_SAVE)
@@ -79,6 +85,10 @@ class CalculatorConfig:
 			raise ValueError(f"{ENV_MAX_INPUT_VALUE} must be greater than zero.")
 		if not default_encoding:
 			raise ValueError(f"{ENV_DEFAULT_ENCODING} cannot be empty.")
+		if not log_file_name:
+			raise ValueError(f"{ENV_LOG_FILE} cannot be empty.")
+		if not history_file_name:
+			raise ValueError(f"{ENV_HISTORY_FILE} cannot be empty.")
 
 		log_dir.mkdir(parents=True, exist_ok=True)
 		history_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +96,8 @@ class CalculatorConfig:
 		return cls(
 			log_dir=log_dir,
 			history_dir=history_dir,
+			log_file_name=log_file_name,
+			history_file_name=history_file_name,
 			max_history_size=max_history_size,
 			auto_save=auto_save,
 			precision=precision,

@@ -17,6 +17,28 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Configuration (.env)
+
+Create a local `.env` file from the example and adjust values as needed:
+
+```bash
+cp .env.example .env
+```
+
+Supported configuration keys:
+
+- `CALCULATOR_LOG_DIR`
+- `CALCULATOR_HISTORY_DIR`
+- `CALCULATOR_LOG_FILE`
+- `CALCULATOR_HISTORY_FILE`
+- `CALCULATOR_MAX_HISTORY_SIZE`
+- `CALCULATOR_AUTO_SAVE`
+- `CALCULATOR_PRECISION`
+- `CALCULATOR_MAX_INPUT_VALUE`
+- `CALCULATOR_DEFAULT_ENCODING`
+
+The application loads `.env` values on startup and uses defaults when a value is not set.
+
 ## Run Tests
 
 ```bash

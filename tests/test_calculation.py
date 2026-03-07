@@ -10,6 +10,8 @@ from app.calculator_config import (
 	ENV_AUTO_SAVE,
 	ENV_DEFAULT_ENCODING,
 	ENV_HISTORY_DIR,
+	ENV_HISTORY_FILE,
+	ENV_LOG_FILE,
 	ENV_LOG_DIR,
 	ENV_MAX_HISTORY_SIZE,
 	ENV_MAX_INPUT_VALUE,
@@ -30,6 +32,8 @@ def _clear_config_env(monkeypatch):
 	for key in [
 		ENV_LOG_DIR,
 		ENV_HISTORY_DIR,
+		ENV_LOG_FILE,
+		ENV_HISTORY_FILE,
 		ENV_MAX_HISTORY_SIZE,
 		ENV_AUTO_SAVE,
 		ENV_PRECISION,
@@ -93,6 +97,8 @@ def test_load_uses_env_values(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_LOG_DIR, str(tmp_path / "my-logs"))
 	monkeypatch.setenv(ENV_HISTORY_DIR, str(tmp_path / "my-history"))
+	monkeypatch.setenv(ENV_LOG_FILE, "my-calculator.log")
+	monkeypatch.setenv(ENV_HISTORY_FILE, "my-history.csv")
 	monkeypatch.setenv(ENV_MAX_HISTORY_SIZE, "250")
 	monkeypatch.setenv(ENV_AUTO_SAVE, "false")
 	monkeypatch.setenv(ENV_PRECISION, "6")
@@ -108,6 +114,8 @@ def test_load_uses_env_values(monkeypatch, tmp_path):
 	assert config.default_encoding == "latin-1"
 	assert config.log_dir == tmp_path / "my-logs"
 	assert config.history_dir == tmp_path / "my-history"
+	assert config.log_file.name == "my-calculator.log"
+	assert config.history_file.name == "my-history.csv"
 
 
 def test_load_rejects_invalid_bounds(monkeypatch, tmp_path):
@@ -139,6 +147,18 @@ def test_load_rejects_empty_encoding(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_DEFAULT_ENCODING, "   ")
 	with pytest.raises(ValueError, match=f"{ENV_DEFAULT_ENCODING} cannot be empty"):
+		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+
+def test_load_rejects_empty_file_names(monkeypatch, tmp_path):
+	_clear_config_env(monkeypatch)
+	monkeypatch.setenv(ENV_LOG_FILE, "   ")
+	with pytest.raises(ValueError, match=f"{ENV_LOG_FILE} cannot be empty"):
+		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+	_clear_config_env(monkeypatch)
+	monkeypatch.setenv(ENV_HISTORY_FILE, "")
+	with pytest.raises(ValueError, match=f"{ENV_HISTORY_FILE} cannot be empty"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
 
@@ -285,6 +305,18 @@ def test_calculator_invalid_input_raises_calculator_error(tmp_path):
 	calculator = Calculator(history_file=tmp_path / "history.csv")
 	with pytest.raises(CalculatorError):
 		calculator.calculate("add", "x", 2)
+
+
+def test_calculator_respects_precision_setting(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv", precision=2)
+	result = calculator.calculate("divide", 1, 3)
+	assert result.result == 0.33
+
+
+def test_calculator_respects_max_input_value(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv", max_input_value=10)
+	with pytest.raises(CalculatorError, match="exceeds maximum allowed value"):
+		calculator.calculate("add", 11, 1)
 
 
 def test_calculator_wrapped_generic_exception_raises_calculator_error(tmp_path, monkeypatch):

@@ -33,20 +33,31 @@ class Calculator:
 		history_file: str | Path = "history.csv",
 		max_history_size: int = 100,
 		log_file: str | Path = "calculator.log",
+		auto_save: bool = True,
+		precision: int = 10,
+		max_input_value: float | None = None,
+		default_encoding: str = "utf-8",
 	):
 		self.history = HistoryManager(max_size=max_history_size)
 		self.history_file = Path(history_file)
 		self.log_file = Path(log_file)
+		self.precision = precision
+		self.max_input_value = max_input_value
+		self.default_encoding = default_encoding
 		self._caretaker = CalculatorCaretaker()
 		self._observers = []
 		self._event_logger = Logger(log_file=self.log_file)
 		self.register_observer(LoggingObserver(Logger(log_file=self.log_file)))
-		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=True))
+		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=auto_save))
 		self._log_event(
 			"calculator_initialized",
 			history_file=self.history_file,
 			log_file=self.log_file,
 			max_history_size=max_history_size,
+			auto_save=auto_save,
+			precision=precision,
+			max_input_value=max_input_value,
+			default_encoding=default_encoding,
 		)
 
 	def _log_event(self, event: str, **details) -> None:
@@ -69,9 +80,14 @@ class Calculator:
 		try:
 			self._log_event("calculation_requested", operation=operation_name, left=left, right=right)
 			normalized = validate_operation_name(operation_name, OperationFactory.get_available_operations())
-			validated_left, validated_right = validate_two_numbers(left, right)
+			validated_left, validated_right = validate_two_numbers(
+				left,
+				right,
+				max_input_value=self.max_input_value,
+			)
 			operation = OperationFactory.create_operation(normalized)
-			result = operation.execute(validated_left, validated_right)
+			raw_result = operation.execute(validated_left, validated_right)
+			result = round(raw_result, self.precision)
 			calculation = Calculation(normalized, validated_left, validated_right, result)
 			self._caretaker.save_for_undo(self.history.get_all())
 			self._caretaker.clear_redo()
@@ -119,7 +135,7 @@ class Calculator:
 		frame = pd.DataFrame(rows, columns=["operation", "operand_1", "operand_2", "result", "timestamp"])
 		try:
 			target.parent.mkdir(parents=True, exist_ok=True)
-			frame.to_csv(target, index=False)
+			frame.to_csv(target, index=False, encoding=self.default_encoding)
 			self._log_event("history_saved", target=target, rows=len(rows))
 		except Exception as error:
 			self._log_event("history_save_error", target=target, error=error)
@@ -132,7 +148,7 @@ class Calculator:
 			raise PersistenceError("History file not found.")
 
 		try:
-			frame = pd.read_csv(target)
+			frame = pd.read_csv(target, encoding=self.default_encoding)
 		except Exception as error:
 			self._log_event("history_load_read_error", target=target, error=error)
 			raise PersistenceError(f"Failed to read history file: {error}") from error
