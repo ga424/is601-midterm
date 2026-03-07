@@ -1,0 +1,94 @@
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+ENV_LOG_DIR = "CALCULATOR_LOG_DIR"
+ENV_HISTORY_DIR = "CALCULATOR_HISTORY_DIR"
+ENV_MAX_HISTORY_SIZE = "CALCULATOR_MAX_HISTORY_SIZE"
+ENV_AUTO_SAVE = "CALCULATOR_AUTO_SAVE"
+ENV_PRECISION = "CALCULATOR_PRECISION"
+ENV_MAX_INPUT_VALUE = "CALCULATOR_MAX_INPUT_VALUE"
+ENV_DEFAULT_ENCODING = "CALCULATOR_DEFAULT_ENCODING"
+
+
+def parse_bool(raw_value: str, key: str) -> bool:
+	normalized = raw_value.strip().lower()
+	if normalized in {"true", "1", "yes", "on"}:
+		return True
+	if normalized in {"false", "0", "no", "off"}:
+		return False
+	raise ValueError(f"{key} must be a boolean value.")
+
+
+def parse_int(raw_value: str, key: str) -> int:
+	try:
+		return int(raw_value)
+	except ValueError as error:
+		raise ValueError(f"{key} must be an integer.") from error
+
+
+def parse_float(raw_value: str, key: str) -> float:
+	try:
+		return float(raw_value)
+	except ValueError as error:
+		raise ValueError(f"{key} must be a numeric value.") from error
+
+
+@dataclass(frozen=True)
+class CalculatorConfig:
+	log_dir: Path
+	history_dir: Path
+	max_history_size: int
+	auto_save: bool
+	precision: int
+	max_input_value: float
+	default_encoding: str
+
+	@property
+	def log_file(self) -> Path:
+		return self.log_dir / "calculator.log"
+
+	@property
+	def history_file(self) -> Path:
+		return self.history_dir / "history.csv"
+
+	@classmethod
+	def load(cls, env_file: str | None = None) -> "CalculatorConfig":
+		if env_file is None:
+			load_dotenv(override=False)
+		else:
+			load_dotenv(dotenv_path=env_file, override=False)
+
+		log_dir = Path(os.getenv(ENV_LOG_DIR, "logs"))
+		history_dir = Path(os.getenv(ENV_HISTORY_DIR, "history"))
+
+		max_history_size = parse_int(os.getenv(ENV_MAX_HISTORY_SIZE, "100"), ENV_MAX_HISTORY_SIZE)
+		auto_save = parse_bool(os.getenv(ENV_AUTO_SAVE, "true"), ENV_AUTO_SAVE)
+		precision = parse_int(os.getenv(ENV_PRECISION, "10"), ENV_PRECISION)
+		max_input_value = parse_float(os.getenv(ENV_MAX_INPUT_VALUE, "1000000"), ENV_MAX_INPUT_VALUE)
+		default_encoding = os.getenv(ENV_DEFAULT_ENCODING, "utf-8").strip()
+
+		if max_history_size <= 0:
+			raise ValueError(f"{ENV_MAX_HISTORY_SIZE} must be greater than zero.")
+		if precision < 0:
+			raise ValueError(f"{ENV_PRECISION} must be zero or greater.")
+		if max_input_value <= 0:
+			raise ValueError(f"{ENV_MAX_INPUT_VALUE} must be greater than zero.")
+		if not default_encoding:
+			raise ValueError(f"{ENV_DEFAULT_ENCODING} cannot be empty.")
+
+		log_dir.mkdir(parents=True, exist_ok=True)
+		history_dir.mkdir(parents=True, exist_ok=True)
+
+		return cls(
+			log_dir=log_dir,
+			history_dir=history_dir,
+			max_history_size=max_history_size,
+			auto_save=auto_save,
+			precision=precision,
+			max_input_value=max_input_value,
+			default_encoding=default_encoding,
+		)
