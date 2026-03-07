@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from app.calculation import Calculation
-from app.calculator import Calculator, colorize_output, run_repl
+from app.calculator import Calculator, ReplMessageLevelStrategy, ReplPresentationConfig, colorize_output, run_repl
 from app.calculator_config import (
 	ENV_AUTO_SAVE,
 	ENV_DEFAULT_ENCODING,
@@ -16,6 +16,9 @@ from app.calculator_config import (
 	ENV_MAX_HISTORY_SIZE,
 	ENV_MAX_INPUT_VALUE,
 	ENV_PRECISION,
+	ENV_REPL_PROMPT,
+	ENV_REPL_USE_COLOR,
+	ENV_REPL_WELCOME_MESSAGE,
 	CalculatorConfig,
 	parse_bool,
 	parse_float,
@@ -39,6 +42,9 @@ def _clear_config_env(monkeypatch):
 		ENV_PRECISION,
 		ENV_MAX_INPUT_VALUE,
 		ENV_DEFAULT_ENCODING,
+		ENV_REPL_PROMPT,
+		ENV_REPL_WELCOME_MESSAGE,
+		ENV_REPL_USE_COLOR,
 	]:
 		monkeypatch.delenv(key, raising=False)
 
@@ -91,6 +97,9 @@ def test_load_uses_defaults_and_creates_directories(monkeypatch, tmp_path):
 	assert config.history_dir.exists()
 	assert config.log_file.name == "calculator.log"
 	assert config.history_file.name == "history.csv"
+	assert config.repl_prompt == "calc> "
+	assert config.repl_welcome_message == "Calculator REPL started. Type 'help' for available commands."
+	assert config.repl_use_color is True
 
 
 def test_load_uses_env_values(monkeypatch, tmp_path):
@@ -104,6 +113,9 @@ def test_load_uses_env_values(monkeypatch, tmp_path):
 	monkeypatch.setenv(ENV_PRECISION, "6")
 	monkeypatch.setenv(ENV_MAX_INPUT_VALUE, "9999.5")
 	monkeypatch.setenv(ENV_DEFAULT_ENCODING, "latin-1")
+	monkeypatch.setenv(ENV_REPL_PROMPT, "mycalc> ")
+	monkeypatch.setenv(ENV_REPL_WELCOME_MESSAGE, "Welcome to calculator")
+	monkeypatch.setenv(ENV_REPL_USE_COLOR, "false")
 
 	config = CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
@@ -116,6 +128,9 @@ def test_load_uses_env_values(monkeypatch, tmp_path):
 	assert config.history_dir == tmp_path / "my-history"
 	assert config.log_file.name == "my-calculator.log"
 	assert config.history_file.name == "my-history.csv"
+	assert config.repl_prompt == "mycalc> "
+	assert config.repl_welcome_message == "Welcome to calculator"
+	assert config.repl_use_color is False
 
 
 def test_load_rejects_invalid_bounds(monkeypatch, tmp_path):
@@ -159,6 +174,18 @@ def test_load_rejects_empty_file_names(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_HISTORY_FILE, "")
 	with pytest.raises(ValueError, match=f"{ENV_HISTORY_FILE} cannot be empty"):
+		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+
+def test_load_rejects_empty_repl_text_values(monkeypatch, tmp_path):
+	_clear_config_env(monkeypatch)
+	monkeypatch.setenv(ENV_REPL_PROMPT, "")
+	with pytest.raises(ValueError, match=f"{ENV_REPL_PROMPT} cannot be empty"):
+		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+	_clear_config_env(monkeypatch)
+	monkeypatch.setenv(ENV_REPL_WELCOME_MESSAGE, "")
+	with pytest.raises(ValueError, match=f"{ENV_REPL_WELCOME_MESSAGE} cannot be empty"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
 
@@ -622,6 +649,29 @@ def test_colorize_output_returns_plain_text_when_colorama_import_fails(monkeypat
 
 	monkeypatch.setattr(builtins, "__import__", _import_with_colorama_error)
 	assert colorize_output("plain", level="success", use_color=True) == "plain"
+
+
+def test_repl_message_level_strategy_default_classification():
+	strategy = ReplMessageLevelStrategy()
+	assert strategy.classify("Exiting calculator.", should_exit=True) == "warning"
+	assert strategy.classify("Error: boom", should_exit=False) == "error"
+	assert strategy.classify("Unknown command 'x'", should_exit=False) == "error"
+	assert strategy.classify("Undo successful.", should_exit=False) == "success"
+	assert strategy.classify("History saved.", should_exit=False) == "success"
+	assert strategy.classify("History is empty.", should_exit=False) == "info"
+
+
+def test_run_repl_uses_custom_presentation_config(monkeypatch, capsys, tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv", log_file=tmp_path / "events.log")
+	custom_config = ReplPresentationConfig(prompt="mycalc> ", welcome_message="Welcome!", use_color=False)
+	inputs = iter(["exit"])
+	monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+
+	run_repl(calculator, presentation_config=custom_config)
+
+	output = capsys.readouterr().out
+	assert "Welcome!" in output
+	assert "Exiting calculator." in output
 
 
 def test_validator_helpers_cover_error_branches():

@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -28,6 +29,23 @@ from app.operations import (
 
 
 class Calculator:
+	_OPERATION_COMMANDS = {
+		"add",
+		"subtract",
+		"multiply",
+		"divide",
+		"power",
+		"root",
+		"modulus",
+		"int_divide",
+		"percent",
+		"abs_diff",
+		"integer_divide",
+		"percentage",
+		"absolute_difference",
+		"absolute",
+	}
+
 	def __init__(
 		self,
 		history_file: str | Path = "history.csv",
@@ -46,6 +64,18 @@ class Calculator:
 		self.default_encoding = default_encoding
 		self._caretaker = CalculatorCaretaker()
 		self._observers = []
+		self._command_handlers = {
+			"help": self._handle_help,
+			"?": self._handle_help,
+			"exit": self._handle_exit,
+			"quit": self._handle_exit,
+			"history": self._handle_history,
+			"clear": self._handle_clear,
+			"undo": self._handle_undo,
+			"redo": self._handle_redo,
+			"save": self._handle_save,
+			"load": self._handle_load,
+		}
 		self._event_logger = Logger(log_file=self.log_file)
 		self.register_observer(LoggingObserver(Logger(log_file=self.log_file)))
 		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=auto_save))
@@ -187,97 +217,70 @@ class Calculator:
 			"  Other: help (or ?), exit"
 		)
 
-	def run_command(self, command: str) -> tuple[str, bool]:
-		parts = command.strip().split()
-		self._log_event("command_received", command=command.strip())
-		if not parts:
-			self._log_event("command_response", message="Please enter a command.", should_exit=False)
-			return "Please enter a command.", False
+	def _handle_help(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		self._log_event("command_response", action=action, should_exit=False)
+		return self._help_message(), False
 
-		action = parts[0].lower()
+	def _handle_exit(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		self._log_event("command_response", action=action, should_exit=True)
+		return "Exiting calculator.", True
 
-		if action in {"help", "?"}:
+	def _handle_history(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		history = self.get_history()
+		if not history:
+			self._log_event("command_response", action=action, message="History is empty.", should_exit=False)
+			return "History is empty.", False
+		self._log_event("command_response", action=action, entries=len(history), should_exit=False)
+		return "\n".join(self._format_calculation(item) for item in history), False
+
+	def _handle_clear(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		self.clear_history()
+		self._log_event("command_response", action=action, should_exit=False)
+		return "History cleared.", False
+
+	def _handle_undo(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		before = len(self.history.get_all())
+		self.undo()
+		after = len(self.history.get_all())
+		self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
+		return ("Undo successful.", False) if before != after else ("Nothing to undo.", False)
+
+	def _handle_redo(self, _parts: list[str], action: str) -> tuple[str, bool]:
+		before = len(self.history.get_all())
+		self.redo()
+		after = len(self.history.get_all())
+		self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
+		return ("Redo successful.", False) if before != after else ("Nothing to redo.", False)
+
+	def _handle_save(self, parts: list[str], action: str) -> tuple[str, bool]:
+		if len(parts) > 2:
+			self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
+			return "Error: save accepts zero or one file path argument.", False
+
+		path = parts[1] if len(parts) == 2 else None
+		try:
+			self.save_history(path)
 			self._log_event("command_response", action=action, should_exit=False)
-			return self._help_message(), False
+			return "History saved.", False
+		except PersistenceError as error:
+			self._log_event("command_response", action=action, error=error, should_exit=False)
+			return f"Error: {error}", False
 
-		if action in {"exit", "quit"}:
-			self._log_event("command_response", action=action, should_exit=True)
-			return "Exiting calculator.", True
+	def _handle_load(self, parts: list[str], action: str) -> tuple[str, bool]:
+		if len(parts) > 2:
+			self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
+			return "Error: load accepts zero or one file path argument.", False
 
-		if action == "history":
-			history = self.get_history()
-			if not history:
-				self._log_event("command_response", action=action, message="History is empty.", should_exit=False)
-				return "History is empty.", False
-			self._log_event("command_response", action=action, entries=len(history), should_exit=False)
-			return "\n".join(self._format_calculation(item) for item in history), False
-
-		if action == "clear":
-			self.clear_history()
+		path = parts[1] if len(parts) == 2 else None
+		try:
+			self.load_history(path)
 			self._log_event("command_response", action=action, should_exit=False)
-			return "History cleared.", False
+			return "History loaded.", False
+		except PersistenceError as error:
+			self._log_event("command_response", action=action, error=error, should_exit=False)
+			return f"Error: {error}", False
 
-		if action == "undo":
-			before = len(self.history.get_all())
-			self.undo()
-			after = len(self.history.get_all())
-			self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
-			return ("Undo successful.", False) if before != after else ("Nothing to undo.", False)
-
-		if action == "redo":
-			before = len(self.history.get_all())
-			self.redo()
-			after = len(self.history.get_all())
-			self._log_event("command_response", action=action, before=before, after=after, should_exit=False)
-			return ("Redo successful.", False) if before != after else ("Nothing to redo.", False)
-
-		if action == "save":
-			if len(parts) > 2:
-				self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
-				return "Error: save accepts zero or one file path argument.", False
-			path = parts[1] if len(parts) == 2 else None
-			try:
-				self.save_history(path)
-				self._log_event("command_response", action=action, should_exit=False)
-				return "History saved.", False
-			except PersistenceError as error:
-				self._log_event("command_response", action=action, error=error, should_exit=False)
-				return f"Error: {error}", False
-
-		if action == "load":
-			if len(parts) > 2:
-				self._log_event("command_response", action=action, error="invalid_arguments", should_exit=False)
-				return "Error: load accepts zero or one file path argument.", False
-			path = parts[1] if len(parts) == 2 else None
-			try:
-				self.load_history(path)
-				self._log_event("command_response", action=action, should_exit=False)
-				return "History loaded.", False
-			except PersistenceError as error:
-				self._log_event("command_response", action=action, error=error, should_exit=False)
-				return f"Error: {error}", False
-
-		available_actions = {
-			"add",
-			"subtract",
-			"multiply",
-			"divide",
-			"power",
-			"root",
-			"modulus",
-			"int_divide",
-			"percent",
-			"abs_diff",
-			"integer_divide",
-			"percentage",
-			"absolute_difference",
-			"absolute",
-		}
-
-		if action not in available_actions:
-			self._log_event("command_response", action=action, error="unknown_command", should_exit=False)
-			return f"Unknown command '{action}'. Type 'help' to view available commands.", False
-
+	def _handle_operation(self, parts: list[str], action: str) -> tuple[str, bool]:
 		if len(parts) != 3:
 			self._log_event("command_response", action=action, error="invalid_operands", should_exit=False)
 			return "Operations require exactly two numeric operands.", False
@@ -289,6 +292,56 @@ class Calculator:
 		except CalculatorError as error:
 			self._log_event("command_response", action=action, error=error, should_exit=False)
 			return f"Error: {error}", False
+
+	def run_command(self, command: str) -> tuple[str, bool]:
+		parts = command.strip().split()
+		self._log_event("command_received", command=command.strip())
+		if not parts:
+			self._log_event("command_response", message="Please enter a command.", should_exit=False)
+			return "Please enter a command.", False
+
+		action = parts[0].lower()
+		handler = self._command_handlers.get(action)
+		if handler is not None:
+			return handler(parts, action)
+
+		if action not in self._OPERATION_COMMANDS:
+			self._log_event("command_response", action=action, error="unknown_command", should_exit=False)
+			return f"Unknown command '{action}'. Type 'help' to view available commands.", False
+
+		return self._handle_operation(parts, action)
+
+
+@dataclass(frozen=True)
+class ReplPresentationConfig:
+	prompt: str = "calc> "
+	welcome_message: str = "Calculator REPL started. Type 'help' for available commands."
+	use_color: bool = True
+	success_messages: set[str] = field(
+		default_factory=lambda: {
+			"History saved.",
+			"History loaded.",
+			"History cleared.",
+		}
+	)
+	error_prefixes: tuple[str, ...] = ("Error:", "Unknown command")
+
+
+class ReplMessageLevelStrategy:
+	def __init__(self, config: ReplPresentationConfig | None = None):
+		self.config = config or ReplPresentationConfig()
+
+	def classify(self, message: str, should_exit: bool) -> str:
+		if should_exit:
+			return "warning"
+
+		if message.startswith(self.config.error_prefixes):
+			return "error"
+
+		if "successful" in message or message in self.config.success_messages:
+			return "success"
+
+		return "info"
 
 
 def colorize_output(text: str, level: str = "info", use_color: bool = True, color: str | None = None) -> str:
@@ -327,36 +380,36 @@ def run_command(calc: Calculator, command: str) -> str:
 	return message
 
 
-def run_repl(calculator: Calculator | None = None) -> None:
+def run_repl(
+	calculator: Calculator | None = None,
+	presentation_config: ReplPresentationConfig | None = None,
+	level_strategy: ReplMessageLevelStrategy | None = None,
+) -> None:
 	calc = calculator or Calculator()
+	config = presentation_config or ReplPresentationConfig()
+	strategy = level_strategy or ReplMessageLevelStrategy(config)
 	calc._log_event("repl_started")
-	print(colorize_output("Calculator REPL started. Type 'help' for available commands.", level="info"))
+	print(colorize_output(config.welcome_message, level="info", use_color=config.use_color))
 	while True:
 		try:
-			command = input(colorize_output("calc> ", level="info"))
+			command = input(colorize_output(config.prompt, level="info", use_color=config.use_color))
 			message, should_exit = calc.run_command(command)
-			if should_exit:
-				print(colorize_output(message, level="warning"))
-			elif message.startswith("Error:") or message.startswith("Unknown command"):
-				print(colorize_output(message, level="error"))
-			elif "successful" in message or message == "History saved." or message == "History loaded." or message == "History cleared.":
-				print(colorize_output(message, level="success"))
-			else:
-				print(colorize_output(message, level="info"))
+			level = strategy.classify(message, should_exit)
+			print(colorize_output(message, level=level, use_color=config.use_color))
 			if should_exit:
 				calc._log_event("repl_stopped", reason="user_exit")
 				break
 		except EOFError:
 			calc._log_event("repl_stopped", reason="eof")
-			print(colorize_output("Exiting calculator.", level="warning"))
+			print(colorize_output("Exiting calculator.", level="warning", use_color=config.use_color))
 			break
 		except KeyboardInterrupt:
 			calc._log_event("repl_stopped", reason="keyboard_interrupt")
-			print(colorize_output("Exiting calculator.", level="warning"))
+			print(colorize_output("Exiting calculator.", level="warning", use_color=config.use_color))
 			break
 		except Exception as error:
 			calc._log_event("repl_error", error=error)
-			print(colorize_output(f"Error: {error}", level="error"))
+			print(colorize_output(f"Error: {error}", level="error", use_color=config.use_color))
 
 
 __all__ = [
@@ -376,6 +429,8 @@ __all__ = [
 	"AbsoluteDifference",
 	"OperationFactory",
 	"Calculator",
+	"ReplPresentationConfig",
+	"ReplMessageLevelStrategy",
 	"run_repl",
 	"run_command",
 	"colorize_output",

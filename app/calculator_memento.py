@@ -3,11 +3,17 @@ from dataclasses import dataclass
 from app.calculation import Calculation
 
 
+# This module defines the CalculatorMemento data class and the CalculatorCaretaker class. 
+
+
+# The Memento pattern allows the application to capture and restore the state of the calculator's history, enabling features like undo and redo.
 @dataclass(frozen=True)
 class CalculatorMemento:
 	state: tuple[Calculation, ...]
 
 
+# The CalculatorCaretaker class manages the undo and redo stacks, allowing the application to save the current state of the calculator's
+# history before performing a new calculation, and to restore previous states when the user requests an undo or redo operation.
 class CalculatorCaretaker:
 	def __init__(self):
 		self._undo_stack: list[CalculatorMemento] = []

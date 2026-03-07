@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 
+# This module defines the Calculation data class, which represents a single calculation performed by the calculator.
+# It allows us to have a structured way to store and manage the details of each calculation, including the operation, operands, result, and timestamp.
 @dataclass(frozen=True)
 class Calculation:
 	operation: str
@@ -10,6 +12,7 @@ class Calculation:
 	result: float
 	timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
+	#This is an instance method that converts the Calculation object into a dictionary format, making it easier to serialize and store the calculation details.
 	def to_dict(self) -> dict:
 		return {
 			"operation": self.operation,
@@ -18,7 +21,7 @@ class Calculation:
 			"result": self.result,
 			"timestamp": self.timestamp.isoformat(),
 		}
-
+    # This is a class method that enables us to create a Calculation instance from a dictionary.
 	@classmethod
 	def from_dict(cls, payload: dict) -> "Calculation":
 		return cls(

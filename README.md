@@ -36,8 +36,26 @@ Supported configuration keys:
 - `CALCULATOR_PRECISION`
 - `CALCULATOR_MAX_INPUT_VALUE`
 - `CALCULATOR_DEFAULT_ENCODING`
+- `CALCULATOR_REPL_PROMPT`
+- `CALCULATOR_REPL_WELCOME_MESSAGE`
+- `CALCULATOR_REPL_USE_COLOR`
 
 The application loads `.env` values on startup and uses defaults when a value is not set.
+
+### REPL Customization Examples
+
+Customize prompt and welcome message:
+
+```dotenv
+CALCULATOR_REPL_PROMPT=mycalc> 
+CALCULATOR_REPL_WELCOME_MESSAGE=Welcome to My Calculator!
+```
+
+Disable color output (useful for plain terminals):
+
+```dotenv
+CALCULATOR_REPL_USE_COLOR=false
+```
 
 ## Run Tests
 
