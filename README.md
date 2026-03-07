@@ -63,6 +63,12 @@ CALCULATOR_REPL_USE_COLOR=false
 pytest
 ```
 
+## Run Lint
+
+```bash
+ruff check .
+```
+
 ## Coverage Policy
 
 This project enforces **100% test coverage** via `pytest-cov`.
