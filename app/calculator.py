@@ -177,6 +177,16 @@ class Calculator:
 		}.get(calculation.operation, calculation.operation)
 		return f"{display_name}({calculation.operand_1}, {calculation.operand_2}) = {calculation.result}"
 
+	@staticmethod
+	def _help_message() -> str:
+		return (
+			"Available commands:\n"
+			"  Operations: add, subtract, multiply, divide, power, root, modulus, int_divide, percent, abs_diff <a> <b>\n"
+			"  History: history, clear, undo, redo\n"
+			"  Persistence: save [file], load [file]\n"
+			"  Other: help (or ?), exit"
+		)
+
 	def run_command(self, command: str) -> tuple[str, bool]:
 		parts = command.strip().split()
 		self._log_event("command_received", command=command.strip())
@@ -186,13 +196,9 @@ class Calculator:
 
 		action = parts[0].lower()
 
-		if action == "help":
+		if action in {"help", "?"}:
 			self._log_event("command_response", action=action, should_exit=False)
-			return (
-				"Available commands: add/subtract/multiply/divide/power/root/modulus/int_divide/percent/abs_diff <a> <b>, "
-				"history, undo, redo, save [file], load [file], clear, exit",
-				False,
-			)
+			return self._help_message(), False
 
 		if action in {"exit", "quit"}:
 			self._log_event("command_response", action=action, should_exit=True)
@@ -251,6 +257,27 @@ class Calculator:
 				self._log_event("command_response", action=action, error=error, should_exit=False)
 				return f"Error: {error}", False
 
+		available_actions = {
+			"add",
+			"subtract",
+			"multiply",
+			"divide",
+			"power",
+			"root",
+			"modulus",
+			"int_divide",
+			"percent",
+			"abs_diff",
+			"integer_divide",
+			"percentage",
+			"absolute_difference",
+			"absolute",
+		}
+
+		if action not in available_actions:
+			self._log_event("command_response", action=action, error="unknown_command", should_exit=False)
+			return f"Unknown command '{action}'. Type 'help' to view available commands.", False
+
 		if len(parts) != 3:
 			self._log_event("command_response", action=action, error="invalid_operands", should_exit=False)
 			return "Operations require exactly two numeric operands.", False
@@ -303,21 +330,33 @@ def run_command(calc: Calculator, command: str) -> str:
 def run_repl(calculator: Calculator | None = None) -> None:
 	calc = calculator or Calculator()
 	calc._log_event("repl_started")
+	print(colorize_output("Calculator REPL started. Type 'help' for available commands.", level="info"))
 	while True:
 		try:
-			command = input("> ")
+			command = input(colorize_output("calc> ", level="info"))
 			message, should_exit = calc.run_command(command)
-			print(message)
+			if should_exit:
+				print(colorize_output(message, level="warning"))
+			elif message.startswith("Error:") or message.startswith("Unknown command"):
+				print(colorize_output(message, level="error"))
+			elif "successful" in message or message == "History saved." or message == "History loaded." or message == "History cleared.":
+				print(colorize_output(message, level="success"))
+			else:
+				print(colorize_output(message, level="info"))
 			if should_exit:
 				calc._log_event("repl_stopped", reason="user_exit")
 				break
+		except EOFError:
+			calc._log_event("repl_stopped", reason="eof")
+			print(colorize_output("Exiting calculator.", level="warning"))
+			break
 		except KeyboardInterrupt:
 			calc._log_event("repl_stopped", reason="keyboard_interrupt")
-			print("Exiting calculator.")
+			print(colorize_output("Exiting calculator.", level="warning"))
 			break
 		except Exception as error:
 			calc._log_event("repl_error", error=error)
-			print(f"Error: {error}")
+			print(colorize_output(f"Error: {error}", level="error"))
 
 
 __all__ = [

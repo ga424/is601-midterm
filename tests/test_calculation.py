@@ -444,6 +444,12 @@ def test_run_command_usage_and_error_messages(tmp_path):
 	message, _ = calculator.run_command("add 10")
 	assert message == "Operations require exactly two numeric operands."
 
+	message, _ = calculator.run_command("foobar")
+	assert message == "Unknown command 'foobar'. Type 'help' to view available commands."
+
+	message, _ = calculator.run_command("?")
+	assert "Available commands" in message
+
 	message, _ = calculator.run_command("save a b")
 	assert message == "Error: save accepts zero or one file path argument."
 
@@ -515,6 +521,15 @@ def test_run_repl_handles_keyboard_interrupt(monkeypatch, capsys):
 		raise KeyboardInterrupt
 
 	monkeypatch.setattr("builtins.input", raise_keyboard_interrupt)
+	run_repl(Calculator())
+	assert "Exiting calculator." in capsys.readouterr().out
+
+
+def test_run_repl_handles_eof(monkeypatch, capsys):
+	def raise_eof(_prompt):
+		raise EOFError
+
+	monkeypatch.setattr("builtins.input", raise_eof)
 	run_repl(Calculator())
 	assert "Exiting calculator." in capsys.readouterr().out
 
