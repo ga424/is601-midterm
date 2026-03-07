@@ -3,230 +3,269 @@ from pathlib import Path
 import pandas as pd
 
 from app.calculation import Calculation
-from app.exceptions import PersistenceError
+from app.calculator_memento import CalculatorCaretaker
+from app.exceptions import CalculatorError, PersistenceError
 from app.history import HistoryManager
+from app.input_validators import ValidationError, validate_operation_name, validate_two_numbers
+from app.logger import AutoSaveObserver, LoggingObserver
 from app.operations import (
-    Absolute,
-    AbsoluteDifference,
-    Add,
-    BinaryOperation,
-    Divide,
-    IntegerDivide,
-    Modulus,
-    Multiply,
-    Operation,
-    OperationFactory,
-    Percentage,
-    Power,
-    Root,
-    Subtract,
-    UnaryOperation,
+	Absolute,
+	AbsoluteDifference,
+	Add,
+	BinaryOperation,
+	Divide,
+	IntegerDivide,
+	Modulus,
+	Multiply,
+	Operation,
+	OperationFactory,
+	Percentage,
+	Power,
+	Root,
+	Subtract,
+	UnaryOperation,
 )
-
-__all__ = [
-    "Operation",
-    "BinaryOperation",
-    "UnaryOperation",
-    "Add",
-    "Subtract",
-    "Multiply",
-    "Divide",
-    "Power",
-    "Root",
-    "Modulus",
-    "IntegerDivide",
-    "Percentage",
-    "Absolute",
-    "AbsoluteDifference",
-    "OperationFactory",
-    "Calculator",
-    "run_repl",
-]
 
 
 class Calculator:
-    _operation_aliases = {
-        "int_divide": "integer_divide",
-        "percent": "percentage",
-        "abs_diff": "absolute_difference",
-    }
+	def __init__(self, history_file: str | Path = "history.csv", max_history_size: int = 100):
+		self.history = HistoryManager(max_size=max_history_size)
+		self.history_file = Path(history_file)
+		self._caretaker = CalculatorCaretaker()
+		self._observers = []
+		self.register_observer(LoggingObserver())
+		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=True))
 
-    _system_commands = {"history", "clear", "undo", "redo", "save", "load", "help", "exit"}
+	def register_observer(self, observer) -> None:
+		self._observers.append(observer)
 
-    def __init__(self, history_file: str = "history.csv"):
-        self.history = HistoryManager()
-        self._observers = []
-        self._undo_stack: list[list[Calculation]] = []
-        self._redo_stack: list[list[Calculation]] = []
-        self.history_file = history_file
+	def unregister_observer(self, observer) -> None:
+		if observer in self._observers:
+			self._observers.remove(observer)
 
-    def register_observer(self, observer) -> None:
-        self._observers.append(observer)
+	def notify_observers(self, calculation: Calculation) -> None:
+		for observer in self._observers:
+			observer.update(calculation)
 
-    def unregister_observer(self, observer) -> None:
-        if observer in self._observers:
-            self._observers.remove(observer)
+	def calculate(self, operation_name, left, right) -> Calculation:
+		try:
+			normalized = validate_operation_name(operation_name, OperationFactory.get_available_operations())
+			validated_left, validated_right = validate_two_numbers(left, right)
+			operation = OperationFactory.create_operation(normalized)
+			result = operation.execute(validated_left, validated_right)
+			calculation = Calculation(normalized, validated_left, validated_right, result)
+			self._caretaker.save_for_undo(self.history.get_all())
+			self._caretaker.clear_redo()
+			self.history.add(calculation)
+			self.notify_observers(calculation)
+			return calculation
+		except ValidationError as error:
+			raise CalculatorError(str(error)) from error
+		except Exception as error:
+			raise CalculatorError(str(error)) from error
 
-    def _notify_observers(self, calculation: Calculation) -> None:
-        for observer in self._observers:
-            observer.update(calculation)
+	def get_history(self) -> list[Calculation]:
+		return self.history.get_all()
 
-    def _resolve_operation(self, command_name: str) -> str:
-        return self._operation_aliases.get(command_name, command_name)
+	def clear_history(self) -> None:
+		self._caretaker.save_for_undo(self.history.get_all())
+		self._caretaker.clear_redo()
+		self.history.clear()
 
-    def _save_snapshot_for_undo(self) -> None:
-        self._undo_stack.append(self.history.get_all())
+	def undo(self) -> Calculation | None:
+		previous_state = self._caretaker.undo(self.history.get_all())
+		if previous_state is None:
+			return None
+		self.history.set_all(previous_state)
+		return self.history.last()
 
-    def _format_calculation(self, calculation: Calculation) -> str:
-        return f"{calculation.operation}({calculation.operand_1}, {calculation.operand_2}) = {calculation.result}"
+	def redo(self) -> Calculation | None:
+		next_state = self._caretaker.redo(self.history.get_all())
+		if next_state is None:
+			return None
+		self.history.set_all(next_state)
+		return self.history.last()
 
-    def calculate(self, operation_name: str, operand_1: float, operand_2: float) -> Calculation:
-        resolved_operation = self._resolve_operation(operation_name)
-        operation = OperationFactory.create_operation(resolved_operation)
-        result = operation.execute(operand_1, operand_2)
-        calculation = Calculation(resolved_operation, operand_1, operand_2, result)
+	def save_history(self, file_path: str | Path | None = None) -> None:
+		target = Path(file_path) if file_path else self.history_file
+		rows = [calculation.to_dict() for calculation in self.history.get_all()]
+		frame = pd.DataFrame(rows, columns=["operation", "operand_1", "operand_2", "result", "timestamp"])
+		try:
+			target.parent.mkdir(parents=True, exist_ok=True)
+			frame.to_csv(target, index=False)
+		except Exception as error:
+			raise PersistenceError(f"Failed to save history: {error}") from error
 
-        self._save_snapshot_for_undo()
-        self.history.add(calculation)
-        self._redo_stack.clear()
-        self._notify_observers(calculation)
-        return calculation
+	def load_history(self, file_path: str | Path | None = None) -> None:
+		target = Path(file_path) if file_path else self.history_file
+		if not target.exists():
+			raise PersistenceError("History file not found.")
 
-    def get_history(self) -> list[Calculation]:
-        return self.history.get_all()
+		try:
+			frame = pd.read_csv(target)
+		except Exception as error:
+			raise PersistenceError(f"Failed to read history file: {error}") from error
 
-    def clear_history(self) -> None:
-        self._save_snapshot_for_undo()
-        self.history.clear()
-        self._redo_stack.clear()
+		required_columns = {"operation", "operand_1", "operand_2", "result", "timestamp"}
+		if not required_columns.issubset(frame.columns):
+			raise PersistenceError("History file is malformed: missing required columns.")
 
-    def undo(self) -> bool:
-        if not self._undo_stack:
-            return False
-        self._redo_stack.append(self.history.get_all())
-        self.history.set_all(self._undo_stack.pop())
-        return True
+		try:
+			calculations = [Calculation.from_dict(row) for _, row in frame.iterrows()]
+		except Exception as error:
+			raise PersistenceError(f"History file contains invalid row data: {error}") from error
 
-    def redo(self) -> bool:
-        if not self._redo_stack:
-            return False
-        self._undo_stack.append(self.history.get_all())
-        self.history.set_all(self._redo_stack.pop())
-        return True
+		self._caretaker.save_for_undo(self.history.get_all())
+		self._caretaker.clear_redo()
+		self.history.set_all(calculations)
 
-    def save_history(self, file_path: str | None = None) -> None:
-        target = Path(file_path or self.history_file)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        rows = [item.to_dict() for item in self.history.get_all()]
-        dataframe = pd.DataFrame(rows, columns=["operation", "operand_1", "operand_2", "result", "timestamp"])
-        try:
-            dataframe.to_csv(target, index=False)
-        except (OSError, ValueError) as error:
-            raise PersistenceError(f"Failed to save history to '{target}'.") from error
+	def _format_calculation(self, calculation: Calculation) -> str:
+		display_name = {
+			"int_divide": "integer_divide",
+			"percent": "percentage",
+			"abs_diff": "absolute_difference",
+		}.get(calculation.operation, calculation.operation)
+		return f"{display_name}({calculation.operand_1}, {calculation.operand_2}) = {calculation.result}"
 
-    def load_history(self, file_path: str | None = None) -> None:
-        target = Path(file_path or self.history_file)
-        if not target.exists():
-            raise PersistenceError(f"History file not found: '{target}'.")
+	def run_command(self, command: str) -> tuple[str, bool]:
+		parts = command.strip().split()
+		if not parts:
+			return "Please enter a command.", False
 
-        try:
-            dataframe = pd.read_csv(target)
-        except (OSError, ValueError, pd.errors.ParserError) as error:
-            raise PersistenceError(f"Failed to read history file '{target}'.") from error
+		action = parts[0].lower()
 
-        required_columns = {"operation", "operand_1", "operand_2", "result", "timestamp"}
-        if not required_columns.issubset(set(dataframe.columns)):
-            raise PersistenceError("History file is malformed: missing required columns.")
+		if action == "help":
+			return (
+				"Available commands: add/subtract/multiply/divide/power/root/modulus/int_divide/percent/abs_diff <a> <b>, "
+				"history, undo, redo, save [file], load [file], clear, exit",
+				False,
+			)
 
-        try:
-            loaded_history = [Calculation.from_dict(row) for row in dataframe.to_dict(orient="records")]
-        except (KeyError, TypeError, ValueError) as error:
-            raise PersistenceError("History file contains invalid row data.") from error
+		if action in {"exit", "quit"}:
+			return "Exiting calculator.", True
 
-        self._save_snapshot_for_undo()
-        self.history.set_all(loaded_history)
-        self._redo_stack.clear()
+		if action == "history":
+			history = self.get_history()
+			if not history:
+				return "History is empty.", False
+			return "\n".join(self._format_calculation(item) for item in history), False
 
-    def _help_text(self) -> str:
-        commands = [
-            "add",
-            "subtract",
-            "multiply",
-            "divide",
-            "power",
-            "root",
-            "modulus",
-            "int_divide",
-            "percent",
-            "abs_diff",
-            "history",
-            "clear",
-            "undo",
-            "redo",
-            "save",
-            "load",
-            "help",
-            "exit",
-        ]
-        return "Available commands: " + ", ".join(commands)
+		if action == "clear":
+			self.clear_history()
+			return "History cleared.", False
 
-    def run_command(self, raw_command: str) -> tuple[str, bool]:
-        parts = raw_command.strip().split()
-        if not parts:
-            return "Please enter a command.", False
+		if action == "undo":
+			before = len(self.history.get_all())
+			self.undo()
+			after = len(self.history.get_all())
+			return ("Undo successful.", False) if before != after else ("Nothing to undo.", False)
 
-        command = parts[0].lower()
-        args = parts[1:]
+		if action == "redo":
+			before = len(self.history.get_all())
+			self.redo()
+			after = len(self.history.get_all())
+			return ("Redo successful.", False) if before != after else ("Nothing to redo.", False)
 
-        try:
-            if command == "exit":
-                return "Exiting calculator.", True
-            if command == "help":
-                return self._help_text(), False
-            if command == "history":
-                history = self.history.get_all()
-                if not history:
-                    return "History is empty.", False
-                return "\n".join(self._format_calculation(item) for item in history), False
-            if command == "clear":
-                self.clear_history()
-                return "History cleared.", False
-            if command == "undo":
-                return ("Undo successful." if self.undo() else "Nothing to undo."), False
-            if command == "redo":
-                return ("Redo successful." if self.redo() else "Nothing to redo."), False
-            if command == "save":
-                if len(args) > 1:
-                    return "Error: save accepts zero or one file path argument.", False
-                path = args[0] if args else None
-                self.save_history(path)
-                return "History saved.", False
-            if command == "load":
-                if len(args) > 1:
-                    return "Error: load accepts zero or one file path argument.", False
-                path = args[0] if args else None
-                self.load_history(path)
-                return "History loaded.", False
+		if action == "save":
+			if len(parts) > 2:
+				return "Error: save accepts zero or one file path argument.", False
+			path = parts[1] if len(parts) == 2 else None
+			try:
+				self.save_history(path)
+				return "History saved.", False
+			except PersistenceError as error:
+				return f"Error: {error}", False
 
-            if command in self._system_commands:
-                return f"Unknown command usage for '{command}'.", False
+		if action == "load":
+			if len(parts) > 2:
+				return "Error: load accepts zero or one file path argument.", False
+			path = parts[1] if len(parts) == 2 else None
+			try:
+				self.load_history(path)
+				return "History loaded.", False
+			except PersistenceError as error:
+				return f"Error: {error}", False
 
-            if len(args) != 2:
-                return "Operations require exactly two numeric operands.", False
+		if len(parts) != 3:
+			return "Operations require exactly two numeric operands.", False
 
-            operand_1 = float(args[0])
-            operand_2 = float(args[1])
-            calculation = self.calculate(command, operand_1, operand_2)
-            return self._format_calculation(calculation), False
-        except (ValueError, PersistenceError) as error:
-            return f"Error: {error}", False
+		try:
+			calculation = self.calculate(parts[0], parts[1], parts[2])
+			return self._format_calculation(calculation), False
+		except CalculatorError as error:
+			return f"Error: {error}", False
+
+
+def colorize_output(text: str, level: str = "info", use_color: bool = True, color: str | None = None) -> str:
+	if not use_color:
+		return text
+
+	try:
+		from colorama import Fore, Style
+	except ImportError:
+		return text
+
+	if color is not None:
+		selected_color = color.lower()
+	else:
+		selected_color = {
+			"success": "green",
+			"error": "red",
+			"warning": "yellow",
+			"info": "cyan",
+		}.get(level.lower(), "cyan")
+
+	palette = {
+		"green": Fore.GREEN,
+		"red": Fore.RED,
+		"yellow": Fore.YELLOW,
+		"cyan": Fore.CYAN,
+	}
+	prefix = palette.get(selected_color, Fore.CYAN)
+	return f"{prefix}{text}{Style.RESET_ALL}"
+
+
+def run_command(calc: Calculator, command: str) -> str:
+	message, should_exit = calc.run_command(command)
+	if should_exit:
+		return "exit"
+	return message
 
 
 def run_repl(calculator: Calculator | None = None) -> None:
-    calculator = calculator or Calculator()
-    while True:
-        user_input = input("calc> ")
-        message, should_exit = calculator.run_command(user_input)
-        print(message)
-        if should_exit:
-            break
+	calc = calculator or Calculator()
+	while True:
+		try:
+			command = input("> ")
+			message, should_exit = calc.run_command(command)
+			print(message)
+			if should_exit:
+				break
+		except KeyboardInterrupt:
+			print("Exiting calculator.")
+			break
+		except Exception as error:
+			print(f"Error: {error}")
+
+
+__all__ = [
+	"Operation",
+	"BinaryOperation",
+	"UnaryOperation",
+	"Add",
+	"Subtract",
+	"Multiply",
+	"Divide",
+	"Power",
+	"Root",
+	"Modulus",
+	"IntegerDivide",
+	"Percentage",
+	"Absolute",
+	"AbsoluteDifference",
+	"OperationFactory",
+	"Calculator",
+	"run_repl",
+	"run_command",
+	"colorize_output",
+]

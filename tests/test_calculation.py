@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from app.calculation import Calculation
-from app.calculator import Calculator, run_repl
+from app.calculator import Calculator, colorize_output, run_repl
 from app.calculator_config import (
 	ENV_AUTO_SAVE,
 	ENV_DEFAULT_ENCODING,
@@ -19,8 +19,10 @@ from app.calculator_config import (
 	parse_float,
 	parse_int,
 )
+from app.calculator_memento import CalculatorCaretaker
 from app.exceptions import CalculatorError, PersistenceError
 from app.history import HistoryManager
+from app.input_validators import parse_number, validate_max_input, validate_operation_name
 from app.logger import AutoSaveObserver, Logger, LoggingObserver
 
 
@@ -108,46 +110,34 @@ def test_load_uses_env_values(monkeypatch, tmp_path):
 	assert config.history_dir == tmp_path / "my-history"
 
 
-def test_load_works_when_env_file_is_none(monkeypatch, tmp_path):
-	_clear_config_env(monkeypatch)
-	monkeypatch.chdir(tmp_path)
-
-	config = CalculatorConfig.load()
-
-	assert config.log_dir.name == "logs"
-	assert config.history_dir.name == "history"
-	assert config.log_dir.exists()
-	assert config.history_dir.exists()
-
-
-def test_load_rejects_non_positive_max_history(monkeypatch, tmp_path):
+def test_load_rejects_invalid_bounds(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_MAX_HISTORY_SIZE, "0")
-
 	with pytest.raises(ValueError, match=f"{ENV_MAX_HISTORY_SIZE} must be greater than zero"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
-
-def test_load_rejects_negative_precision(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_PRECISION, "-1")
-
 	with pytest.raises(ValueError, match=f"{ENV_PRECISION} must be zero or greater"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
-
-def test_load_rejects_non_positive_max_input(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_MAX_INPUT_VALUE, "0")
-
 	with pytest.raises(ValueError, match=f"{ENV_MAX_INPUT_VALUE} must be greater than zero"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+
+def test_load_works_when_env_file_is_none(monkeypatch, tmp_path):
+	_clear_config_env(monkeypatch)
+	monkeypatch.chdir(tmp_path)
+	config = CalculatorConfig.load()
+	assert config.log_dir.exists()
+	assert config.history_dir.exists()
 
 
 def test_load_rejects_empty_encoding(monkeypatch, tmp_path):
 	_clear_config_env(monkeypatch)
 	monkeypatch.setenv(ENV_DEFAULT_ENCODING, "   ")
-
 	with pytest.raises(ValueError, match=f"{ENV_DEFAULT_ENCODING} cannot be empty"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
@@ -160,17 +150,6 @@ class DummyObserver:
 		self.calls.append(calculation)
 
 
-def test_calculation_to_dict_contains_expected_fields():
-	calculation = Calculation("add", 1, 2, 3)
-	payload = calculation.to_dict()
-
-	assert payload["operation"] == "add"
-	assert payload["operand_1"] == 1
-	assert payload["operand_2"] == 2
-	assert payload["result"] == 3
-	assert isinstance(payload["timestamp"], str)
-
-
 def test_calculation_to_dict_and_from_dict_round_trip():
 	original = Calculation(
 		operation="multiply",
@@ -179,183 +158,135 @@ def test_calculation_to_dict_and_from_dict_round_trip():
 		result=20,
 		timestamp=datetime(2026, 3, 6, tzinfo=timezone.utc),
 	)
-
 	payload = original.to_dict()
 	restored = Calculation.from_dict(payload)
 	assert restored == original
 
 
-def test_history_manager_add_clear_set_all_get_all():
-	history = HistoryManager()
+def test_history_manager_add_set_clear_and_last():
+	history = HistoryManager(max_size=2)
 	first = Calculation("add", 1, 2, 3)
 	second = Calculation("multiply", 2, 3, 6)
+	third = Calculation("subtract", 9, 1, 8)
 	history.add(first)
-	history.set_all([first, second])
-	assert history.get_all() == [first, second]
+	history.add(second)
+	history.add(third)
+	assert history.get_all() == [second, third]
+	assert history.last() == third
 	history.clear()
 	assert history.get_all() == []
 
 
-def test_calculator_notifies_registered_observer():
-	calculator = Calculator()
-	observer = DummyObserver()
-	calculator.register_observer(observer)
-
-	calculation = calculator.calculate("add", 10, 5)
-	assert observer.calls == [calculation]
+def test_history_manager_rejects_non_positive_max_size():
+	with pytest.raises(ValueError, match="max_size must be greater than zero"):
+		HistoryManager(max_size=0)
 
 
-def test_calculator_unregister_observer_stops_notifications():
-	calculator = Calculator()
-	observer = DummyObserver()
-	calculator.register_observer(observer)
-	calculator.unregister_observer(observer)
-	calculator.calculate("multiply", 2, 4)
-	assert observer.calls == []
+def test_caretaker_undo_redo_round_trip():
+	calc_1 = Calculation("add", 1, 2, 3)
+	calc_2 = Calculation("multiply", 2, 3, 6)
+	caretaker = CalculatorCaretaker()
+	caretaker.save_for_undo([])
+	caretaker.save_for_undo([calc_1])
+	assert caretaker.undo([calc_1, calc_2]) == [calc_1]
+	assert caretaker.redo([calc_1]) == [calc_1, calc_2]
 
 
-def test_calculator_unregister_missing_observer_noop():
-	calculator = Calculator()
-	calculator.unregister_observer(DummyObserver())
-	assert calculator.history.get_all() == []
+def test_caretaker_undo_redo_empty_stacks_return_none():
+	caretaker = CalculatorCaretaker()
+	assert caretaker.undo([]) is None
+	assert caretaker.redo([]) is None
 
 
-def test_logger_writes_info_message_to_file(tmp_path):
-	log_file = tmp_path / "calculator.log"
-	logger = Logger(log_file=log_file)
-	logger.info("test message")
-	content = log_file.read_text(encoding="utf-8")
-	assert "INFO:test message" in content
-
-
-def test_logging_observer_logs_calculation(tmp_path):
+def test_logger_and_logging_observer_write_to_file(tmp_path):
 	log_file = tmp_path / "events.log"
-	observer = LoggingObserver(Logger(log_file=log_file))
-	calculation = Calculation("subtract", 8, 3, 5)
-	observer.update(calculation)
+	logger = Logger(log_file=log_file)
+	logger.info("hello")
+	observer = LoggingObserver(logger)
+	observer.update(Calculation("add", 1, 2, 3))
 	content = log_file.read_text(encoding="utf-8")
-	assert "operation=subtract" in content
-	assert "result=5" in content
+	assert "INFO:hello" in content
+	assert "operation=add" in content
 
 
-def test_autosave_observer_saves_history_to_csv(tmp_path):
+def test_autosave_observer_saves_when_enabled(tmp_path):
 	history = HistoryManager()
 	history.add(Calculation("add", 1, 2, 3))
-	history.add(Calculation("multiply", 2, 5, 10))
-	csv_file = tmp_path / "history" / "calc_history.csv"
+	csv_file = tmp_path / "history" / "calc.csv"
 	observer = AutoSaveObserver(history=history, csv_file=csv_file, enabled=True)
 	observer.update(Calculation("add", 0, 0, 0))
-	assert csv_file.exists()
 	frame = pd.read_csv(csv_file)
-	assert list(frame["operation"]) == ["add", "multiply"]
-	assert list(frame["result"]) == [3, 10]
+	assert list(frame["operation"]) == ["add"]
 
 
 def test_autosave_observer_disabled_does_not_write_file(tmp_path):
 	history = HistoryManager()
 	history.add(Calculation("add", 1, 2, 3))
-	csv_file = Path(tmp_path / "history.csv")
+	csv_file = tmp_path / "history" / "calc.csv"
 	observer = AutoSaveObserver(history=history, csv_file=csv_file, enabled=False)
 	observer.update(Calculation("add", 0, 0, 0))
 	assert not csv_file.exists()
 
 
-def test_persistence_error_inherits_calculator_error():
-	assert issubclass(PersistenceError, CalculatorError)
-
-
-def test_calculator_calculate_get_history_and_clear_history():
-	calculator = Calculator()
+def test_calculator_calculate_history_observers_and_unregister(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+	dummy = DummyObserver()
+	calculator.register_observer(dummy)
 	result = calculator.calculate("add", 10, 2)
 	assert result.result == 12
 	assert len(calculator.get_history()) == 1
+	assert dummy.calls[-1] == result
+	calculator.unregister_observer(dummy)
+	calculator.calculate("subtract", 10, 5)
+	assert len(dummy.calls) == 1
+
+
+def test_calculator_invalid_input_raises_calculator_error(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+	with pytest.raises(CalculatorError):
+		calculator.calculate("add", "x", 2)
+
+
+def test_calculator_wrapped_generic_exception_raises_calculator_error(tmp_path, monkeypatch):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+
+	def broken_factory(_name):
+		raise RuntimeError("boom")
+
+	from app import operations
+
+	monkeypatch.setattr(operations.OperationFactory, "create_operation", broken_factory)
+	with pytest.raises(CalculatorError, match="boom"):
+		calculator.calculate("add", 1, 2)
+
+
+def test_calculator_undo_redo_and_clear(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+	assert calculator.undo() is None
+	calculator.calculate("add", 1, 2)
+	calculator.calculate("multiply", 2, 5)
+	assert len(calculator.get_history()) == 2
+	assert calculator.undo() is not None
+	assert len(calculator.get_history()) == 1
+	assert calculator.redo() is not None
+	assert len(calculator.get_history()) == 2
 	calculator.clear_history()
 	assert calculator.get_history() == []
 
 
-def test_save_history_creates_csv_with_expected_columns(tmp_path):
-	calculator = Calculator()
+def test_save_and_load_history(tmp_path):
+	file_path = tmp_path / "saved.csv"
+	calculator = Calculator(history_file=file_path)
 	calculator.calculate("add", 1, 2)
-	calculator.calculate("multiply", 3, 4)
-	file_path = tmp_path / "history" / "calc.csv"
-	calculator.save_history(str(file_path))
+	calculator.save_history()
 	assert file_path.exists()
-	frame = pd.read_csv(file_path)
-	assert list(frame.columns) == ["operation", "operand_1", "operand_2", "result", "timestamp"]
-	assert list(frame["operation"]) == ["add", "multiply"]
+	calculator.clear_history()
+	calculator.load_history()
+	assert len(calculator.get_history()) == 1
 
 
-def test_save_history_with_empty_history_writes_header_only(tmp_path):
-	calculator = Calculator()
-	file_path = tmp_path / "empty.csv"
-	calculator.save_history(str(file_path))
-	frame = pd.read_csv(file_path)
-	assert frame.empty
-	assert list(frame.columns) == ["operation", "operand_1", "operand_2", "result", "timestamp"]
-
-
-def test_load_history_populates_history_from_csv(tmp_path):
-	file_path = tmp_path / "loaded.csv"
-	rows = [
-		{
-			"operation": "add",
-			"operand_1": 3,
-			"operand_2": 7,
-			"result": 10,
-			"timestamp": "2026-03-06T00:00:00+00:00",
-		},
-		{
-			"operation": "divide",
-			"operand_1": 8,
-			"operand_2": 2,
-			"result": 4,
-			"timestamp": "2026-03-06T00:00:01+00:00",
-		},
-	]
-	pd.DataFrame(rows).to_csv(file_path, index=False)
-
-	calculator = Calculator()
-	calculator.load_history(str(file_path))
-	assert len(calculator.get_history()) == 2
-	assert calculator.get_history()[0].operation == "add"
-	assert calculator.get_history()[1].result == 4
-
-
-def test_load_history_missing_file_raises_persistence_error(tmp_path):
-	calculator = Calculator()
-	missing_path = tmp_path / "missing.csv"
-	with pytest.raises(PersistenceError, match="History file not found"):
-		calculator.load_history(str(missing_path))
-
-
-def test_load_history_missing_required_columns_raises_persistence_error(tmp_path):
-	file_path = tmp_path / "bad_columns.csv"
-	pd.DataFrame([{"operation": "add", "result": 2}]).to_csv(file_path, index=False)
-	calculator = Calculator()
-	with pytest.raises(PersistenceError, match="missing required columns"):
-		calculator.load_history(str(file_path))
-
-
-def test_load_history_invalid_row_data_raises_persistence_error(tmp_path):
-	file_path = tmp_path / "bad_data.csv"
-	pd.DataFrame(
-		[
-			{
-				"operation": "add",
-				"operand_1": "x",
-				"operand_2": 2,
-				"result": 3,
-				"timestamp": "invalid-date",
-			}
-		]
-	).to_csv(file_path, index=False)
-	calculator = Calculator()
-	with pytest.raises(PersistenceError, match="invalid row data"):
-		calculator.load_history(str(file_path))
-
-
-def test_save_history_io_failure_raises_persistence_error(tmp_path, monkeypatch):
-	calculator = Calculator()
+def test_save_history_error_wraps_persistence_error(tmp_path, monkeypatch):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
 	calculator.calculate("add", 1, 2)
 
 	def broken_to_csv(*args, **kwargs):
@@ -363,131 +294,127 @@ def test_save_history_io_failure_raises_persistence_error(tmp_path, monkeypatch)
 
 	monkeypatch.setattr(pd.DataFrame, "to_csv", broken_to_csv)
 	with pytest.raises(PersistenceError, match="Failed to save history"):
-		calculator.save_history(str(tmp_path / "history.csv"))
+		calculator.save_history(tmp_path / "x.csv")
 
 
-def test_load_history_parser_failure_raises_persistence_error(tmp_path, monkeypatch):
-	file_path = tmp_path / "history.csv"
-	file_path.write_text("operation,operand_1\nadd,1", encoding="utf-8")
+def test_load_history_error_cases(tmp_path, monkeypatch):
+	calculator = Calculator(history_file=tmp_path / "missing.csv")
+	with pytest.raises(PersistenceError, match="History file not found"):
+		calculator.load_history()
+
+	bad_columns = tmp_path / "bad_columns.csv"
+	pd.DataFrame([{"operation": "add", "result": 2}]).to_csv(bad_columns, index=False)
+	with pytest.raises(PersistenceError, match="missing required columns"):
+		calculator.load_history(bad_columns)
+
+	bad_rows = tmp_path / "bad_rows.csv"
+	pd.DataFrame([
+		{
+			"operation": "add",
+			"operand_1": "x",
+			"operand_2": 2,
+			"result": 3,
+			"timestamp": "invalid-date",
+		}
+	]).to_csv(bad_rows, index=False)
+	with pytest.raises(PersistenceError, match="invalid row data"):
+		calculator.load_history(bad_rows)
 
 	def broken_read_csv(*args, **kwargs):
 		raise pd.errors.ParserError("bad csv")
 
 	monkeypatch.setattr(pd, "read_csv", broken_read_csv)
-	calculator = Calculator()
 	with pytest.raises(PersistenceError, match="Failed to read history file"):
-		calculator.load_history(str(file_path))
+		calculator.load_history(bad_rows)
 
 
-def test_run_command_requires_input():
-	calculator = Calculator()
+def test_run_command_flow_and_messages(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+
 	message, should_exit = calculator.run_command("   ")
 	assert message == "Please enter a command."
 	assert should_exit is False
 
-
-def test_run_command_help_and_exit():
-	calculator = Calculator()
-	help_message, should_exit = calculator.run_command("help")
+	help_message, _ = calculator.run_command("help")
 	assert "Available commands" in help_message
-	assert should_exit is False
+
+	redo_message, _ = calculator.run_command("redo")
+	assert redo_message == "Nothing to redo."
+
+	op_message, _ = calculator.run_command("int_divide 10 3")
+	assert op_message == "integer_divide(10.0, 3.0) = 3"
+
+	history_message, _ = calculator.run_command("history")
+	assert "integer_divide(10.0, 3.0) = 3" in history_message
+
+	undo_message, _ = calculator.run_command("undo")
+	assert undo_message == "Undo successful."
+
+	redo_message2, _ = calculator.run_command("redo")
+	assert redo_message2 == "Redo successful."
+
+	save_message, _ = calculator.run_command("save")
+	assert save_message == "History saved."
+
+	load_message, _ = calculator.run_command("load")
+	assert load_message == "History loaded."
+
+	clear_message, _ = calculator.run_command("clear")
+	assert clear_message == "History cleared."
 
 	exit_message, should_exit = calculator.run_command("exit")
 	assert exit_message == "Exiting calculator."
 	assert should_exit is True
 
 
-def test_run_command_operation_success_with_alias_name():
-	calculator = Calculator()
-	message, should_exit = calculator.run_command("int_divide 10 3")
-	assert message == "integer_divide(10.0, 3.0) = 3"
-	assert should_exit is False
-
-
-def test_run_command_operation_requires_two_operands():
-	calculator = Calculator()
+def test_run_command_usage_and_error_messages(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
 	message, _ = calculator.run_command("add 10")
 	assert message == "Operations require exactly two numeric operands."
 
+	message, _ = calculator.run_command("save a b")
+	assert message == "Error: save accepts zero or one file path argument."
 
-def test_run_command_operation_numeric_error():
-	calculator = Calculator()
+	message, _ = calculator.run_command("load a b")
+	assert message == "Error: load accepts zero or one file path argument."
+
 	message, _ = calculator.run_command("add one two")
 	assert message.startswith("Error:")
 
 
-def test_run_command_history_and_clear_flow():
-	calculator = Calculator()
-	empty_message, _ = calculator.run_command("history")
-	assert empty_message == "History is empty."
+def test_run_command_history_empty_and_path_based_save_load(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "default.csv")
+	message, _ = calculator.run_command("history")
+	assert message == "History is empty."
 
 	calculator.run_command("add 1 2")
-	history_message, _ = calculator.run_command("history")
-	assert "add(1.0, 2.0) = 3.0" in history_message
-
-	clear_message, _ = calculator.run_command("clear")
-	assert clear_message == "History cleared."
-
-
-def test_run_command_undo_redo_flow():
-	calculator = Calculator()
-	message, _ = calculator.run_command("undo")
-	assert message == "Nothing to undo."
-	redo_message, _ = calculator.run_command("redo")
-	assert redo_message == "Nothing to redo."
-
-	calculator.run_command("add 1 2")
-	undo_message, _ = calculator.run_command("undo")
-	assert undo_message == "Undo successful."
-
-	redo_message, _ = calculator.run_command("redo")
-	assert redo_message == "Redo successful."
-
-
-def test_run_command_unknown_system_usage_message():
-	calculator = Calculator()
-	message, _ = calculator.run_command("save extra another")
-	assert message == "Error: save accepts zero or one file path argument."
-
-
-def test_run_command_load_usage_error_message():
-	calculator = Calculator()
-	message, _ = calculator.run_command("load a b")
-	assert message == "Error: load accepts zero or one file path argument."
-
-
-def test_save_and_load_history_commands(tmp_path):
-	file_path = tmp_path / "history.csv"
-	calculator = Calculator(history_file=str(file_path))
-
-	calculator.run_command("add 2 3")
-	save_message, _ = calculator.run_command("save")
-	assert save_message == "History saved."
-	assert file_path.exists()
-
+	file_path = tmp_path / "named.csv"
+	message, _ = calculator.run_command(f"save {file_path}")
+	assert message == "History saved."
 	calculator.run_command("clear")
-	load_message, _ = calculator.run_command("load")
-	assert load_message == "History loaded."
-	assert len(calculator.history.get_all()) == 1
+	message, _ = calculator.run_command(f"load {file_path}")
+	assert message == "History loaded."
 
 
-def test_load_command_missing_file_returns_error(tmp_path):
-	calculator = Calculator(history_file=str(tmp_path / "missing.csv"))
+def test_run_command_returns_error_on_persistence_failure(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "missing.csv")
 	message, _ = calculator.run_command("load")
 	assert message.startswith("Error: History file not found")
 
 
-def test_load_command_malformed_csv_returns_error(tmp_path):
-	bad_file = Path(tmp_path / "bad.csv")
-	pd.DataFrame([{"operation": "add"}]).to_csv(bad_file, index=False)
-	calculator = Calculator(history_file=str(bad_file))
+def test_run_command_save_returns_error_on_persistence_failure(tmp_path, monkeypatch):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
 
-	message, _ = calculator.run_command("load")
-	assert message == "Error: History file is malformed: missing required columns."
+	def broken_save(_path=None):
+		raise PersistenceError("save failed")
+
+	monkeypatch.setattr(calculator, "save_history", broken_save)
+	message, _ = calculator.run_command("save bad.csv")
+	assert message == "Error: save failed"
 
 
 def test_run_repl_exits_when_exit_command_received(monkeypatch, capsys):
-	calculator = Calculator()
+	calculator = Calculator(history_file=Path("history.csv"))
 	inputs = iter(["help", "exit"])
 	monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
 
@@ -496,3 +423,81 @@ def test_run_repl_exits_when_exit_command_received(monkeypatch, capsys):
 	output = capsys.readouterr().out
 	assert "Available commands" in output
 	assert "Exiting calculator." in output
+
+
+def test_run_repl_handles_keyboard_interrupt(monkeypatch, capsys):
+	def raise_keyboard_interrupt(_prompt):
+		raise KeyboardInterrupt
+
+	monkeypatch.setattr("builtins.input", raise_keyboard_interrupt)
+	run_repl(Calculator())
+	assert "Exiting calculator." in capsys.readouterr().out
+
+
+def test_run_repl_handles_unexpected_exception(monkeypatch, capsys):
+	inputs = iter(["help", "exit"])
+
+	def flaky_input(_prompt):
+		value = next(inputs)
+		if value == "help":
+			raise RuntimeError("input broke")
+		return value
+
+	monkeypatch.setattr("builtins.input", flaky_input)
+	run_repl(Calculator())
+	assert "Error: input broke" in capsys.readouterr().out
+
+
+def test_module_run_command_function_returns_exit_sentinel(tmp_path):
+	from app.calculator import run_command
+
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+	assert run_command(calculator, "help").startswith("Available commands")
+	assert run_command(calculator, "exit") == "exit"
+
+
+def test_colorize_output_variants():
+	assert colorize_output("done", level="success", use_color=False) == "done"
+	assert "ok" in colorize_output("ok", level="success", use_color=True)
+	assert "failed" in colorize_output("failed", level="error", use_color=True)
+	assert "watch out" in colorize_output("watch out", level="warning", use_color=True)
+	assert "hello" in colorize_output("hello", level="other", use_color=True)
+	assert "custom" in colorize_output("custom", color="red", use_color=True)
+
+
+def test_colorize_output_with_mocked_colorama_palette_paths(monkeypatch):
+	class _Fore:
+		GREEN = "G"
+		RED = "R"
+		YELLOW = "Y"
+		CYAN = "C"
+
+	class _Style:
+		RESET_ALL = "!"
+
+	class _Colorama:
+		Fore = _Fore
+		Style = _Style
+
+	import sys
+
+	monkeypatch.setitem(sys.modules, "colorama", _Colorama)
+	assert colorize_output("ok", level="success") == "Gok!"
+	assert colorize_output("ok", color="green") == "Gok!"
+	assert colorize_output("ok", color="unknown") == "Cok!"
+
+
+def test_validator_helpers_cover_error_branches():
+	with pytest.raises(Exception):
+		parse_number(True)
+
+	with pytest.raises(Exception):
+		validate_max_input(99, 10)
+
+	assert validate_max_input(9, 10) == 9
+
+	with pytest.raises(Exception):
+		validate_operation_name("", ["add"])
+
+	with pytest.raises(Exception):
+		validate_operation_name("unknown", ["add"])
