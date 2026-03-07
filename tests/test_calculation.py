@@ -78,6 +78,8 @@ def test_run_command_undo_redo_flow():
 	calculator = Calculator()
 	message, _ = calculator.run_command("undo")
 	assert message == "Nothing to undo."
+	redo_message, _ = calculator.run_command("redo")
+	assert redo_message == "Nothing to redo."
 
 	calculator.run_command("add 1 2")
 	undo_message, _ = calculator.run_command("undo")
@@ -90,7 +92,13 @@ def test_run_command_undo_redo_flow():
 def test_run_command_unknown_system_usage_message():
 	calculator = Calculator()
 	message, _ = calculator.run_command("save extra another")
-	assert message.startswith("Error:")
+	assert message == "Error: save accepts zero or one file path argument."
+
+
+def test_run_command_load_usage_error_message():
+	calculator = Calculator()
+	message, _ = calculator.run_command("load a b")
+	assert message == "Error: load accepts zero or one file path argument."
 
 
 def test_save_and_load_history_commands(tmp_path):

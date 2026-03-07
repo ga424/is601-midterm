@@ -258,16 +258,17 @@ class Calculator:
             if command == "redo":
                 return ("Redo successful." if self.redo() else "Nothing to redo."), False
             if command == "save":
+                if len(args) > 1:
+                    return "Error: save accepts zero or one file path argument.", False
                 path = args[0] if args else None
                 self.save_history(path)
                 return "History saved.", False
             if command == "load":
+                if len(args) > 1:
+                    return "Error: load accepts zero or one file path argument.", False
                 path = args[0] if args else None
                 self.load_history(path)
                 return "History loaded.", False
-
-            if command in self._system_commands:
-                return f"Unknown command usage for '{command}'.", False
 
             if len(args) != 2:
                 return "Operations require exactly two numeric operands.", False
