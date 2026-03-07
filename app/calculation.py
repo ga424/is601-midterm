@@ -26,5 +26,5 @@ class Calculation:
 			operand_1=float(payload["operand_1"]),
 			operand_2=float(payload["operand_2"]),
 			result=float(payload["result"]),
-			timestamp=datetime.fromisoformat(payload["timestamp"]),
+			timestamp=datetime.fromisoformat(str(payload["timestamp"])),
 		)
