@@ -6,6 +6,10 @@ class OperationError(CalculatorError):
 	"""Raised when an operation cannot be executed."""
 
 
+class DivideByZeroError(OperationError):
+	"""Raised when an operation attempts to divide by zero."""
+
+
 class ValidationError(CalculatorError):
 	"""Raised when user input fails validation."""
 
