@@ -109,6 +109,18 @@ time=2026-03-06T22:14:03+0000 level=INFO logger=calculator.calculator.log class=
 
 This makes logs easier to filter, parse, and audit during debugging and rubric review.
 
+### Log Severity Policy
+
+Use this policy for consistent event classification:
+
+| Level | When to use | Examples |
+|---|---|---|
+| `INFO` | Normal successful flow and lifecycle events | `calculator_initialized`, `command_received`, `calculation_completed`, `history_saved`, `history_loaded`, `repl_started`, `repl_stopped` |
+| `WARNING` | Expected but non-ideal outcomes or recoverable user issues | `undo_noop`, `redo_noop`, `history_load_missing_file`, `history_load_missing_columns`, unknown command, invalid command arguments |
+| `ERROR` | Unexpected failures or operation/persistence exceptions | `calculation_error`, `calculation_domain_error`, `history_save_error`, `history_load_read_error`, `history_load_invalid_rows`, `repl_error` |
+
+Default runtime level is `INFO` and can be configured via `CALCULATOR_LOG_LEVEL`.
+
 ## Feature Branch Workflow
 
 Use a feature branch for every change, then open a pull request (merge request) into `main`.
