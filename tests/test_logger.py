@@ -21,6 +21,30 @@ def test_logger_and_logging_observer_write_to_file(tmp_path):
 	assert "class=LoggingObserver" in content
 
 
+def test_logger_warning_and_error_write_levels(tmp_path):
+	log_file = tmp_path / "events.log"
+	logger = Logger(log_file=log_file)
+	logger.warning("watch out")
+	logger.error("failed")
+	content = log_file.read_text(encoding="utf-8")
+	assert "level=WARNING" in content
+	assert "message=watch out" in content
+	assert "level=ERROR" in content
+	assert "message=failed" in content
+
+
+def test_logger_event_respects_explicit_level(tmp_path):
+	log_file = tmp_path / "events.log"
+	logger = Logger(log_file=log_file)
+	logger.event("threshold_warning", class_name="Logger", level="warning")
+	logger.event("threshold_error", class_name="Logger", level="error")
+	content = log_file.read_text(encoding="utf-8")
+	assert "level=WARNING" in content
+	assert "event=threshold_warning" in content
+	assert "level=ERROR" in content
+	assert "event=threshold_error" in content
+
+
 def test_calculator_event_logging_writes_command_and_history_events(tmp_path):
 	log_file = tmp_path / "events.log"
 	history_file = tmp_path / "history.csv"

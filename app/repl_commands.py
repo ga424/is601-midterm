@@ -33,6 +33,31 @@ class ReplCommand(ABC):
 		raise NotImplementedError  # pragma: no cover
 
 
+class CommandLoggingDecorator(ReplCommand):
+	def __init__(self, wrapped: ReplCommand):
+		self.wrapped = wrapped
+
+	@staticmethod
+	def _resolve_level(message: str, should_exit: bool) -> str:
+		if should_exit:
+			return "warning"
+		if message.startswith("Error:") or message.startswith("Unknown command"):
+			return "warning"
+		if message in {"Nothing to undo.", "Nothing to redo.", "History is empty."}:
+			return "warning"
+		return "info"
+
+	def execute(self, calculator: Calculator, parts: list[str], action: str) -> tuple[str, bool]:
+		message, should_exit = self.wrapped.execute(calculator, parts, action)
+		calculator._log_event(
+			"command_decorated_response",
+			action=action,
+			should_exit=should_exit,
+			level=self._resolve_level(message, should_exit),
+		)
+		return message, should_exit
+
+
 class HelpCommand(ReplCommand):
 	def execute(self, calculator: Calculator, _parts: list[str], action: str) -> tuple[str, bool]:
 		calculator._log_event("command_response", action=action, should_exit=False)
@@ -129,14 +154,14 @@ class OperationCommand(ReplCommand):
 
 def build_command_registry() -> dict[str, ReplCommand]:
 	return {
-		"help": HelpCommand(),
-		"?": HelpCommand(),
-		"exit": ExitCommand(),
-		"quit": ExitCommand(),
-		"history": HistoryCommand(),
-		"clear": ClearCommand(),
-		"undo": UndoCommand(),
-		"redo": RedoCommand(),
-		"save": SaveCommand(),
-		"load": LoadCommand(),
+		"help": CommandLoggingDecorator(HelpCommand()),
+		"?": CommandLoggingDecorator(HelpCommand()),
+		"exit": CommandLoggingDecorator(ExitCommand()),
+		"quit": CommandLoggingDecorator(ExitCommand()),
+		"history": CommandLoggingDecorator(HistoryCommand()),
+		"clear": CommandLoggingDecorator(ClearCommand()),
+		"undo": CommandLoggingDecorator(UndoCommand()),
+		"redo": CommandLoggingDecorator(RedoCommand()),
+		"save": CommandLoggingDecorator(SaveCommand()),
+		"load": CommandLoggingDecorator(LoadCommand()),
 	}

@@ -9,6 +9,7 @@ def main() -> None:
 		history_file=config.history_file,
 		max_history_size=config.max_history_size,
 		log_file=config.log_file,
+		log_level=config.log_level,
 		auto_save=config.auto_save,
 		precision=config.precision,
 		max_input_value=config.max_input_value,

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 ENV_LOG_DIR = "CALCULATOR_LOG_DIR"
 ENV_HISTORY_DIR = "CALCULATOR_HISTORY_DIR"
 ENV_LOG_FILE = "CALCULATOR_LOG_FILE"
+ENV_LOG_LEVEL = "CALCULATOR_LOG_LEVEL"
 ENV_HISTORY_FILE = "CALCULATOR_HISTORY_FILE"
 ENV_MAX_HISTORY_SIZE = "CALCULATOR_MAX_HISTORY_SIZE"
 ENV_AUTO_SAVE = "CALCULATOR_AUTO_SAVE"
@@ -47,6 +48,7 @@ class CalculatorConfig:
 	log_dir: Path
 	history_dir: Path
 	log_file_name: str
+	log_level: str
 	history_file_name: str
 	max_history_size: int
 	auto_save: bool
@@ -80,6 +82,7 @@ class CalculatorConfig:
 		log_dir = Path(os.getenv(ENV_LOG_DIR, "logs"))
 		history_dir = Path(os.getenv(ENV_HISTORY_DIR, "history"))
 		log_file_name = os.getenv(ENV_LOG_FILE, "calculator.log").strip()
+		log_level = os.getenv(ENV_LOG_LEVEL, "INFO").strip().upper()
 		history_file_name = os.getenv(ENV_HISTORY_FILE, "history.csv").strip()
 
 		max_history_size = parse_int(os.getenv(ENV_MAX_HISTORY_SIZE, "100"), ENV_MAX_HISTORY_SIZE)
@@ -104,6 +107,8 @@ class CalculatorConfig:
 			raise ValueError(f"{ENV_DEFAULT_ENCODING} cannot be empty.")
 		if not log_file_name:
 			raise ValueError(f"{ENV_LOG_FILE} cannot be empty.")
+		if log_level not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
+			raise ValueError(f"{ENV_LOG_LEVEL} must be one of: CRITICAL, ERROR, WARNING, INFO, DEBUG.")
 		if not history_file_name:
 			raise ValueError(f"{ENV_HISTORY_FILE} cannot be empty.")
 		if not repl_prompt:
@@ -118,6 +123,7 @@ class CalculatorConfig:
 			log_dir=log_dir,
 			history_dir=history_dir,
 			log_file_name=log_file_name,
+			log_level=log_level,
 			history_file_name=history_file_name,
 			max_history_size=max_history_size,
 			auto_save=auto_save,

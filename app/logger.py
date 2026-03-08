@@ -8,9 +8,9 @@ from app.history import HistoryManager
 
 
 class Logger:
-	def __init__(self, log_file: str | Path = "calculator.log"):
+	def __init__(self, log_file: str | Path = "calculator.log", log_level: str = "INFO"):
 		self._logger = logging.getLogger(f"calculator.{Path(log_file)}")
-		self._logger.setLevel(logging.INFO)
+		self._logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 		self._logger.propagate = False
 		if not self._logger.handlers:
 			handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -25,10 +25,22 @@ class Logger:
 	def info(self, message: str, class_name: str = "Logger") -> None:
 		self._logger.info(message, extra={"class_name": class_name})
 
-	def event(self, event: str, class_name: str, **details) -> None:
+	def warning(self, message: str, class_name: str = "Logger") -> None:
+		self._logger.warning(message, extra={"class_name": class_name})
+
+	def error(self, message: str, class_name: str = "Logger") -> None:
+		self._logger.error(message, extra={"class_name": class_name})
+
+	def event(self, event: str, class_name: str, level: str = "info", **details) -> None:
 		payload = " ".join(f"{key}={value}" for key, value in details.items())
 		message = f"event={event}" if not payload else f"event={event} {payload}"
-		self.info(message, class_name=class_name)
+		selected_level = level.lower()
+		if selected_level == "warning":
+			self.warning(message, class_name=class_name)
+		elif selected_level == "error":
+			self.error(message, class_name=class_name)
+		else:
+			self.info(message, class_name=class_name)
 
 
 class LoggingObserver:

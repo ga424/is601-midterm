@@ -35,6 +35,7 @@ class Calculator:
 		history_file: str | Path = "history.csv",
 		max_history_size: int = 100,
 		log_file: str | Path = "calculator.log",
+		log_level: str = "INFO",
 		auto_save: bool = True,
 		precision: int = 10,
 		max_input_value: float | None = None,
@@ -43,6 +44,7 @@ class Calculator:
 		self.history = HistoryManager(max_size=max_history_size)
 		self.history_file = Path(history_file)
 		self.log_file = Path(log_file)
+		self.log_level = log_level
 		self.precision = precision
 		self.max_input_value = max_input_value
 		self.default_encoding = default_encoding
@@ -50,8 +52,8 @@ class Calculator:
 		self._observers = []
 		self._command_handlers = build_command_registry()
 		self._operation_command = OperationCommand()
-		self._event_logger = Logger(log_file=self.log_file)
-		self.register_observer(LoggingObserver(Logger(log_file=self.log_file)))
+		self._event_logger = Logger(log_file=self.log_file, log_level=self.log_level)
+		self.register_observer(LoggingObserver(Logger(log_file=self.log_file, log_level=self.log_level)))
 		self.register_observer(AutoSaveObserver(history=self.history, csv_file=self.history_file, enabled=auto_save))
 		self._log_event(
 			"calculator_initialized",
@@ -59,13 +61,14 @@ class Calculator:
 			log_file=self.log_file,
 			max_history_size=max_history_size,
 			auto_save=auto_save,
+			log_level=log_level,
 			precision=precision,
 			max_input_value=max_input_value,
 			default_encoding=default_encoding,
 		)
 
-	def _log_event(self, event: str, **details) -> None:
-		self._event_logger.event(event, class_name=self.__class__.__name__, **details)
+	def _log_event(self, event: str, level: str = "info", **details) -> None:
+		self._event_logger.event(event, class_name=self.__class__.__name__, level=level, **details)
 
 	def register_observer(self, observer) -> None:
 		self._observers.append(observer)
@@ -100,10 +103,13 @@ class Calculator:
 			self._log_event("calculation_completed", operation=normalized, result=result)
 			return calculation
 		except ValidationError as error:
-			self._log_event("calculation_validation_error", error=error)
+			self._log_event("calculation_validation_error", level="warning", error=error)
 			raise CalculatorError(str(error)) from error
+		except CalculatorError as error:
+			self._log_event("calculation_domain_error", level="error", error=error)
+			raise
 		except Exception as error:
-			self._log_event("calculation_error", error=error)
+			self._log_event("calculation_error", level="error", error=error)
 			raise CalculatorError(str(error)) from error
 
 	def get_history(self) -> list[Calculation]:
@@ -118,7 +124,7 @@ class Calculator:
 	def undo(self) -> Calculation | None:
 		previous_state = self._caretaker.undo(self.history.get_all())
 		if previous_state is None:
-			self._log_event("undo_noop")
+			self._log_event("undo_noop", level="warning")
 			return None
 		self.history.set_all(previous_state)
 		self._log_event("undo_applied", history_size=len(self.history.get_all()))
@@ -127,7 +133,7 @@ class Calculator:
 	def redo(self) -> Calculation | None:
 		next_state = self._caretaker.redo(self.history.get_all())
 		if next_state is None:
-			self._log_event("redo_noop")
+			self._log_event("redo_noop", level="warning")
 			return None
 		self.history.set_all(next_state)
 		self._log_event("redo_applied", history_size=len(self.history.get_all()))
@@ -142,30 +148,30 @@ class Calculator:
 			frame.to_csv(target, index=False, encoding=self.default_encoding)
 			self._log_event("history_saved", target=target, rows=len(rows))
 		except Exception as error:
-			self._log_event("history_save_error", target=target, error=error)
+			self._log_event("history_save_error", level="error", target=target, error=error)
 			raise PersistenceError(f"Failed to save history: {error}") from error
 
 	def load_history(self, file_path: str | Path | None = None) -> None:
 		target = Path(file_path) if file_path else self.history_file
 		if not target.exists():
-			self._log_event("history_load_missing_file", target=target)
+			self._log_event("history_load_missing_file", level="warning", target=target)
 			raise PersistenceError("History file not found.")
 
 		try:
 			frame = pd.read_csv(target, encoding=self.default_encoding)
 		except Exception as error:
-			self._log_event("history_load_read_error", target=target, error=error)
+			self._log_event("history_load_read_error", level="error", target=target, error=error)
 			raise PersistenceError(f"Failed to read history file: {error}") from error
 
 		required_columns = {"operation", "operand_1", "operand_2", "result", "timestamp"}
 		if not required_columns.issubset(frame.columns):
-			self._log_event("history_load_missing_columns", target=target)
+			self._log_event("history_load_missing_columns", level="warning", target=target)
 			raise PersistenceError("History file is malformed: missing required columns.")
 
 		try:
 			calculations = [Calculation.from_dict(row) for _, row in frame.iterrows()]
 		except Exception as error:
-			self._log_event("history_load_invalid_rows", target=target, error=error)
+			self._log_event("history_load_invalid_rows", level="error", target=target, error=error)
 			raise PersistenceError(f"History file contains invalid row data: {error}") from error
 
 		self._caretaker.save_for_undo(self.history.get_all())
@@ -204,7 +210,7 @@ class Calculator:
 			return handler.execute(self, parts, action)
 
 		if action not in OPERATION_COMMANDS:
-			self._log_event("command_response", action=action, error="unknown_command", should_exit=False)
+			self._log_event("command_response", level="warning", action=action, error="unknown_command", should_exit=False)
 			return f"Unknown command '{action}'. Type 'help' to view available commands.", False
 
 		return self._operation_command.execute(self, parts, action)
@@ -306,7 +312,7 @@ def run_repl(
 			print(colorize_output("Exiting calculator.", level="warning", use_color=config.use_color))
 			break
 		except Exception as error:
-			calc._log_event("repl_error", error=error)
+			calc._log_event("repl_error", level="error", error=error)
 			print(colorize_output(f"Error: {error}", level="error", use_color=config.use_color))
 
 

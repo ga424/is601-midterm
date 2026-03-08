@@ -6,6 +6,7 @@ from app.calculator_config import (
 	ENV_HISTORY_DIR,
 	ENV_HISTORY_FILE,
 	ENV_LOG_FILE,
+	ENV_LOG_LEVEL,
 	ENV_LOG_DIR,
 	ENV_MAX_HISTORY_SIZE,
 	ENV_MAX_INPUT_VALUE,
@@ -61,6 +62,7 @@ def test_load_uses_defaults_and_creates_directories(clear_config_env, monkeypatc
 	assert config.precision == 10
 	assert config.max_input_value == 1_000_000.0
 	assert config.default_encoding == "utf-8"
+	assert config.log_level == "INFO"
 	assert config.log_dir.name == "logs"
 	assert config.history_dir.name == "history"
 	assert config.log_dir.exists()
@@ -76,6 +78,7 @@ def test_load_uses_env_values(clear_config_env, monkeypatch, tmp_path):
 	monkeypatch.setenv(ENV_LOG_DIR, str(tmp_path / "my-logs"))
 	monkeypatch.setenv(ENV_HISTORY_DIR, str(tmp_path / "my-history"))
 	monkeypatch.setenv(ENV_LOG_FILE, "my-calculator.log")
+	monkeypatch.setenv(ENV_LOG_LEVEL, "debug")
 	monkeypatch.setenv(ENV_HISTORY_FILE, "my-history.csv")
 	monkeypatch.setenv(ENV_MAX_HISTORY_SIZE, "250")
 	monkeypatch.setenv(ENV_AUTO_SAVE, "false")
@@ -93,6 +96,7 @@ def test_load_uses_env_values(clear_config_env, monkeypatch, tmp_path):
 	assert config.precision == 6
 	assert config.max_input_value == 9999.5
 	assert config.default_encoding == "latin-1"
+	assert config.log_level == "DEBUG"
 	assert config.log_dir == tmp_path / "my-logs"
 	assert config.history_dir == tmp_path / "my-history"
 	assert config.log_file.name == "my-calculator.log"
@@ -139,6 +143,12 @@ def test_load_rejects_empty_file_names(clear_config_env, monkeypatch, tmp_path):
 	monkeypatch.delenv(ENV_LOG_FILE, raising=False)
 	monkeypatch.setenv(ENV_HISTORY_FILE, "")
 	with pytest.raises(ValueError, match=f"{ENV_HISTORY_FILE} cannot be empty"):
+		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
+
+
+def test_load_rejects_invalid_log_level(clear_config_env, monkeypatch, tmp_path):
+	monkeypatch.setenv(ENV_LOG_LEVEL, "verbose")
+	with pytest.raises(ValueError, match=f"{ENV_LOG_LEVEL} must be one of"):
 		CalculatorConfig.load(env_file=str(tmp_path / "missing.env"))
 
 
