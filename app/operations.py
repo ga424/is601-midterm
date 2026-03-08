@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
+from app.exceptions import DivideByZeroError
+
 
 class Operation(ABC):
 	@abstractmethod
@@ -43,7 +45,7 @@ class Divide(BinaryOperation):
 	def __init__(self):
 		def divide_impl(x, y):
 			if y == 0:
-				raise ValueError("Cannot divide by zero.")
+				raise DivideByZeroError("Cannot divide by zero.")
 			return x / y
 
 		super().__init__(divide_impl)
@@ -78,7 +80,7 @@ class IntegerDivide(BinaryOperation):
 	def __init__(self):
 		def int_divide_impl(x, y):
 			if y == 0:
-				raise ValueError("Cannot perform integer division by zero.")
+				raise DivideByZeroError("Cannot perform integer division by zero.")
 			return int(x // y)
 
 		super().__init__(int_divide_impl)
@@ -88,7 +90,7 @@ class Percentage(BinaryOperation):
 	def __init__(self):
 		def percentage_impl(x, y):
 			if y == 0:
-				raise ValueError("Cannot calculate percentage with zero as denominator.")
+				raise DivideByZeroError("Cannot calculate percentage with zero as denominator.")
 			return (x / y) * 100
 
 		super().__init__(percentage_impl)

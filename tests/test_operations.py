@@ -2,6 +2,7 @@ import math
 
 import pytest
 
+from app.exceptions import DivideByZeroError
 from app.operations import AbsoluteDifference, IntegerDivide, OperationFactory, Percentage
 
 
@@ -63,13 +64,24 @@ def test_root_operation_expected_values(left, right):
 	"name,left,right,error_message",
 	[
 		("divide", 10, 0, "Cannot divide by zero"),
-		("root", 27, 0, "Cannot take the root with degree zero"),
-		("modulus", 10, 0, "Cannot take modulus with zero"),
 		("integer_divide", 10, 0, "Cannot perform integer division by zero"),
 		("percentage", 10, 0, "Cannot calculate percentage with zero as denominator"),
 	],
 )
-def test_operations_raise_value_error_for_zero_division_cases(name, left, right, error_message):
+def test_operations_raise_divide_by_zero_error_for_division_cases(name, left, right, error_message):
+	operation = OperationFactory.create_operation(name)
+	with pytest.raises(DivideByZeroError, match=error_message):
+		operation.execute(left, right)
+
+
+@pytest.mark.parametrize(
+	"name,left,right,error_message",
+	[
+		("root", 27, 0, "Cannot take the root with degree zero"),
+		("modulus", 10, 0, "Cannot take modulus with zero"),
+	],
+)
+def test_operations_raise_value_error_for_non_division_zero_cases(name, left, right, error_message):
 	operation = OperationFactory.create_operation(name)
 	with pytest.raises(ValueError, match=error_message):
 		operation.execute(left, right)

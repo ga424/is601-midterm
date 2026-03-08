@@ -46,6 +46,12 @@ def test_calculator_respects_max_input_value(tmp_path):
 		calculator.calculate("add", 11, 1)
 
 
+def test_calculator_divide_by_zero_raises_domain_error(tmp_path):
+	calculator = Calculator(history_file=tmp_path / "history.csv")
+	with pytest.raises(CalculatorError, match="Cannot divide by zero"):
+		calculator.calculate("divide", 10, 0)
+
+
 def test_calculator_wrapped_generic_exception_raises_calculator_error(tmp_path, monkeypatch):
 	calculator = Calculator(history_file=tmp_path / "history.csv")
 
