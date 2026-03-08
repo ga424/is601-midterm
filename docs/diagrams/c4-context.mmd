@@ -1,0 +1,11 @@
+C4Context
+    title Calculator System Context
+    Person(user, "Calculator User", "Runs calculator commands in a terminal")
+
+    System(calculator, "IS601 Calculator", "Python CLI calculator application")
+    System_Ext(filesystem, "Local Filesystem", "Stores calculator history and logs")
+    System_Ext(environment, "Environment Variables", "Provides runtime configuration from .env")
+
+    Rel(user, calculator, "Uses", "CLI commands")
+    Rel(calculator, filesystem, "Reads/Writes", "CSV history, log files")
+    Rel(calculator, environment, "Loads", "Configuration values")

@@ -1,0 +1,22 @@
+C4Container
+    title Calculator Container View
+    Person(user, "Calculator User")
+
+    System_Boundary(calc_app, "IS601 Calculator Application") {
+        Container(cli, "CLI Entrypoint", "Python (main.py)", "Starts app, loads config, launches REPL")
+        Container(core, "Calculator Core", "Python (app/calculator.py)", "Executes commands and operations, manages history")
+        Container(config, "Configuration", "Python (app/calculator_config.py)", "Loads and validates env settings")
+        Container(commands, "REPL Command Layer", "Python (app/repl_commands.py)", "Parses and dispatches REPL commands")
+        Container(ops, "Operation Engine", "Python (app/operations.py)", "Factory and operation implementations")
+        Container(persistence, "History + Logging", "Python (app/history.py, app/logger.py)", "Persists history and structured logs")
+    }
+
+    System_Ext(filesystem, "Local Filesystem", "history/*.csv, logs/*.log")
+
+    Rel(user, cli, "Interacts with", "Terminal input/output")
+    Rel(cli, config, "Loads")
+    Rel(cli, core, "Creates and starts")
+    Rel(core, commands, "Delegates command handling")
+    Rel(commands, ops, "Invokes operation factory")
+    Rel(core, persistence, "Stores and retrieves history/events")
+    Rel(persistence, filesystem, "Reads/Writes")

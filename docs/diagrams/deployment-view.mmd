@@ -1,0 +1,16 @@
+flowchart TD
+    U[User Terminal] --> APP[Calculator CLI Process\nPython 3.11+]
+
+    subgraph Runtime[Local Runtime Environment]
+        ENV[.env variables]
+        APP
+        HIST[history/history.csv]
+        LOGS[logs/calculator.log]
+    end
+
+    ENV --> APP
+    APP --> HIST
+    APP --> LOGS
+
+    GH[GitHub Actions CI] --> TESTS[pytest + coverage gate]
+    GH --> LINT[ruff lint gate]

@@ -1,0 +1,19 @@
+flowchart LR
+    A[main.py\nEntrypoint] --> B[app/calculator_config.py\nEnvironment config]
+    A --> C[app/calculator.py\nCalculator orchestration]
+
+    C --> D[app/repl_commands.py\nCommand objects]
+    C --> E[app/operations.py\nFactory + operations]
+    C --> F[app/history.py\nHistoryManager]
+    C --> G[app/calculator_memento.py\nUndo/Redo]
+    C --> H[app/logger.py\nLogger + Observers]
+    C --> I[app/input_validators.py\nValidation helpers]
+    C --> J[app/calculation.py\nCalculation model]
+
+    K[tests/test_config.py] --> B
+    L[tests/test_calculator.py] --> C
+    M[tests/test_repl.py] --> D
+    N[tests/test_operations.py\n+ test_operations_classes.py] --> E
+    O[tests/test_history.py] --> F
+    P[tests/test_logger.py] --> H
+    Q[tests/test_calculation.py] --> J

@@ -69,6 +69,18 @@ pytest
 ruff check .
 ```
 
+## Architecture (C4)
+
+C4 architecture diagrams are available at [docs/c4-architecture.md](docs/c4-architecture.md), including:
+
+- System Context (Level 1)
+- Container Diagram (Level 2)
+- Component Diagram for Calculator Core (Level 3)
+- Code Summary View (module and test mapping)
+- Deployment View (runtime and CI perspective)
+
+For Mermaid preview/export instructions, see [docs/diagrams/README.md](docs/diagrams/README.md).
+
 ## Coverage Policy
 
 This project enforces **100% test coverage** via `pytest-cov`.

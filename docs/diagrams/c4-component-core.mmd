@@ -1,0 +1,23 @@
+C4Component
+    title Calculator Core Components
+    Container_Boundary(core, "Calculator Core (app/calculator.py)") {
+        Component(repl, "REPL Loop", "run_repl", "Interactive command loop and message presentation")
+        Component(dispatch, "Command Dispatch", "run_command + registry", "Routes text commands to handlers")
+        Component(calc_service, "Calculation Service", "Calculator.calculate", "Validates input and computes results")
+        Component(history_mgmt, "History Management", "HistoryManager + CalculatorCaretaker", "Tracks state and undo/redo")
+        Component(observer_flow, "Observer Notifications", "LoggingObserver + AutoSaveObserver", "Publishes calculation events")
+    }
+
+    Component_Ext(config, "Config Loader", "app/calculator_config.py")
+    Component_Ext(operations, "Operation Factory", "app/operations.py")
+    Component_Ext(repl_cmds, "REPL Commands", "app/repl_commands.py")
+    Component_Ext(storage, "Persistence", "CSV files + logs")
+
+    Rel(repl, dispatch, "Sends commands")
+    Rel(dispatch, repl_cmds, "Uses handlers")
+    Rel(dispatch, calc_service, "Executes operations")
+    Rel(calc_service, operations, "Creates operations")
+    Rel(calc_service, history_mgmt, "Stores snapshots and calculations")
+    Rel(calc_service, observer_flow, "Notifies observers")
+    Rel(observer_flow, storage, "Writes logs/history")
+    Rel(config, repl, "Provides REPL settings")
